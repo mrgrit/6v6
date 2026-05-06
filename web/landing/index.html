@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>6v6 실습 환경</title>
+<style>
+:root { --accent: #2563eb; --bg: #f8fafc; --card: #fff; --muted: #64748b; --border: #e2e8f0; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: #0f172a; margin: 0; line-height: 1.55; }
+.wrap { max-width: 980px; margin: 2em auto; padding: 0 1.2em; }
+h1 { font-size: 1.9em; border-bottom: 3px solid var(--accent); padding-bottom: 10px; color: var(--accent); }
+h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-top: 2.4em; }
+.banner { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 6px; margin: 1.2em 0; font-size: 0.95em; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 1em 0; }
+@media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+a.card { display: block; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: #0f172a; background: var(--card); transition: all .15s; }
+a.card:hover { border-color: var(--accent); background: #eff6ff; transform: translateY(-1px); }
+a.card .meta { color: var(--muted); font-size: 0.86em; display: block; margin-top: 3px; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; margin-right: 6px; vertical-align: middle; }
+.tag.attack { background: #fee2e2; color: #b91c1c; }
+.tag.defense { background: #d1fae5; color: #047857; }
+.tag.mgmt { background: #dbeafe; color: #1d4ed8; }
+pre { background: #1e293b; color: #e2e8f0; padding: 14px 18px; border-radius: 8px; overflow-x: auto; font-size: 0.88em; }
+code { background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-size: 0.92em; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.92em; }
+th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+th { background: #f1f5f9; }
+.muted { color: var(--muted); font-size: 0.88em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>6v6 실습 환경 — CCC 인프라 단일 VM Docker 버전</h1>
+
+<div class="banner">
+이 페이지는 <code>6v6-web</code> (Apache + ModSecurity) 가 응답한 랜딩 페이지입니다.
+모든 트래픽은 <code>web</code> 컨테이너의 ModSecurity 검사를 통과한 후 백엔드로 전달됩니다.
+</div>
+
+<h2>취약 웹 (학습용)</h2>
+<div class="grid">
+  <a class="card" href="/juice/">
+    <span class="tag attack">취약</span>OWASP Juice Shop
+    <span class="meta">/juice/ — Apache + ModSecurity reverse proxy 통해 접근</span>
+  </a>
+</div>
+
+<h2>관리/모니터링</h2>
+<div class="grid">
+  <a class="card" href=":8000/" onclick="this.href='http://'+location.hostname+':8000/'">
+    <span class="tag mgmt">관리</span>관리 포털
+    <span class="meta">:8000 — 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit</span>
+  </a>
+  <a class="card" href=":5601/" onclick="this.href='http://'+location.hostname+':5601/'">
+    <span class="tag defense">방어</span>SIEM (Wazuh lite)
+    <span class="meta">:5601 — 알림 + 룰 + agent 상태</span>
+  </a>
+  <a class="card" href=":9100/health" onclick="this.href='http://'+location.hostname+':9100/health'">
+    <span class="tag mgmt">관리</span>Bastion API
+    <span class="meta">:9100/health — 점프 호스트 헬스 체크</span>
+  </a>
+</div>
+
+<h2>학생 PC SSH 접속 (Bastion ProxyJump)</h2>
+<p>학생 PC <code>~/.ssh/config</code> 에 한 번 추가:</p>
+<pre><code>Host 6v6-bastion
+  HostName &lt;VM_IP&gt;
+  Port 2204
+  User ccc
+
+Host 6v6-attacker
+  HostName &lt;VM_IP&gt;
+  Port 2202
+  User ccc
+
+Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
+  ProxyJump 6v6-bastion
+  User ccc</code></pre>
+
+<p>그 후:</p>
+<pre><code>ssh 6v6-bastion        # 점프 호스트 직접
+ssh 6v6-attacker       # attacker (직접, 별도 포트)
+ssh 6v6-secu           # bastion 경유 자동
+ssh 6v6-web            # bastion 경유 자동
+ssh 6v6-siem           # bastion 경유 자동</code></pre>
+
+<p class="muted">기본 SSH 비밀번호: <code>ccc</code> &nbsp;·&nbsp; Bastion API 키: <code>ccc-api-key-2026</code></p>
+
+<h2>네트워크 구성</h2>
+<table>
+<tr><th>컨테이너</th><th>IP</th><th>역할</th><th>외부 포트</th></tr>
+<tr><td>6v6-bastion</td><td>10.20.30.201</td><td>SSH 점프 + Bastion API</td><td>2204, 9100</td></tr>
+<tr><td>6v6-secu</td><td>10.20.30.1</td><td>nftables + Suricata IDS</td><td>—</td></tr>
+<tr><td>6v6-web</td><td>10.20.30.80</td><td>Apache + ModSecurity + 랜딩</td><td>80, 443</td></tr>
+<tr><td>6v6-juiceshop</td><td>10.20.30.81</td><td>OWASP Juice Shop (web reverse proxy 만)</td><td>—</td></tr>
+<tr><td>6v6-siem</td><td>10.20.30.100</td><td>Wazuh manager + cti-collector</td><td>5601</td></tr>
+<tr><td>6v6-attacker</td><td>10.20.30.202</td><td>nmap, hydra, sqlmap, msfconsole</td><td>2202</td></tr>
+<tr><td>6v6-portal</td><td>10.20.30.50</td><td>관리 대시보드 (FastAPI + HTMX)</td><td>8000</td></tr>
+</table>
+
+<h2>트래픽 흐름</h2>
+<pre>
+  attacker (10.20.30.202)
+       │
+       ▼  HTTP/HTTPS
+  ┌────────────┐
+  │   secu     │  10.20.30.1   ← nftables + Suricata sniff
+  │ (gateway)  │
+  └─────┬──────┘
+        │
+        ▼  reverse proxy
+  ┌────────────┐
+  │    web     │  10.20.30.80  ← Apache + ModSecurity (CRS)
+  │  (랜딩+WAF) │
+  └─────┬──────┘
+        │  /juice/ → http://juiceshop:3000/
+        ▼
+  ┌────────────┐
+  │ juiceshop  │  10.20.30.81 (외부 노출 X)
+  └────────────┘
+
+  ┌────────────┐    ┌──────────┐    ┌──────────┐
+  │  bastion   │    │   siem   │    │  portal  │
+  │ (점프호스트) │    │  (Wazuh) │    │ (관리UI) │
+  └────────────┘    └──────────┘    └──────────┘
+</pre>
+
+<p class="muted" style="margin-top:3em;border-top:1px solid var(--border);padding-top:1em">
+6v6 — CCC 단일 VM Docker 버전 · <a href="https://github.com/mrgrit/6v6">github.com/mrgrit/6v6</a>
+</p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# 6v6 secu — 학습용 Suricata 커스텀 룰 (sid 1000000 이상).
+# 강의/실습에서 학생이 직접 추가하면서 sid/rev 패턴 학습.
+
+# SQL Injection 시도 (간단 패턴 — UNION SELECT)
+alert http any any -> any any (msg:"6V6 SQL Injection Attempt - UNION SELECT"; \
+    flow:established,to_server; content:"UNION"; nocase; content:"SELECT"; nocase; \
+    distance:0; within:30; sid:1000001; rev:1;)
+
+# XSS 시도 (script 태그)
+alert http any any -> any any (msg:"6V6 XSS Attempt - script tag"; \
+    flow:established,to_server; content:"<script"; nocase; \
+    sid:1000002; rev:1;)
+
+# 자동화 도구 — sqlmap User-Agent
+alert http any any -> any any (msg:"6V6 Bot UA - sqlmap"; \
+    flow:established,to_server; content:"User-Agent|3a 20|sqlmap"; nocase; http_header; \
+    sid:1000003; rev:1;)
+
+# Path Traversal
+alert http any any -> any any (msg:"6V6 Path Traversal Attempt"; \
+    flow:established,to_server; content:"../"; pcre:"/\.\.\//"; \
+    sid:1000004; rev:1;)
+
+# nmap 스캔 시그니처 (TCP SYN to 다수 포트 from 동일 src)
+alert tcp any any -> any any (msg:"6V6 Possible nmap SYN scan"; \
+    flags:S; threshold:type both, track by_src, count 30, seconds 10; \
+    sid:1000005; rev:1;)

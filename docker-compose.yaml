@@ -1,0 +1,173 @@
+name: 6v6
+
+# ─────────────────────────────────────────────────────────────
+# 6v6 — CCC 4-노드 인프라의 단일 docker-compose 버전 + 랜딩 + 포털.
+# 단일 bridge network 10.20.30.0/24 — 강의 자료의 IP 스킴 그대로.
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ─── bastion: SSH 점프 + Bastion API ────────────────────────
+  bastion:
+    container_name: 6v6-bastion
+    build:
+      context: .
+      dockerfile: bastion/Dockerfile
+    hostname: bastion
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.201
+    ports:
+      - "${PORT_BASTION_SSH:-2204}:22"
+      - "${PORT_BASTION_API:-9100}:9100"
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+      API_KEY: ${API_KEY:-ccc-api-key-2026}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+    volumes:
+      - bastion-data:/var/lib/bastion
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # ─── secu: nftables + Suricata IDS ──────────────────────────
+  secu:
+    container_name: 6v6-secu
+    build:
+      context: .
+      dockerfile: secu/Dockerfile
+    hostname: secu
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.1
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+    volumes:
+      - secu-suricata-logs:/var/log/suricata
+    restart: unless-stopped
+
+  # ─── web: Apache + ModSecurity + 랜딩 + JuiceShop reverse proxy ──
+  web:
+    container_name: 6v6-web
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    hostname: web
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.80
+    ports:
+      - "${PORT_HTTP:-80}:80"
+      - "${PORT_HTTPS:-443}:443"
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+    volumes:
+      - web-apache-logs:/var/log/apache2
+    depends_on:
+      - juiceshop
+    restart: unless-stopped
+
+  # ─── juiceshop: 취약 웹 백엔드 (web 만 접근) ─────────────
+  juiceshop:
+    container_name: 6v6-juiceshop
+    image: bkimminich/juice-shop:latest
+    hostname: juiceshop
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.81
+    # 외부 포트 노출 X — 모든 트래픽이 web 의 Apache + ModSecurity 통과
+    restart: unless-stopped
+
+  # ─── siem: Wazuh manager + simple alert viewer + cti-collector ─
+  siem:
+    container_name: 6v6-siem
+    build:
+      context: .
+      dockerfile: siem/Dockerfile
+    hostname: siem
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.100
+    ports:
+      - "${PORT_SIEM_DASH:-5601}:5601"
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+    volumes:
+      - siem-data:/var/lib/siem
+      - siem-wazuh:/var/ossec
+    restart: unless-stopped
+
+  # ─── attacker: pentest 도구 (nmap/hydra/sqlmap/nikto/msf) ──
+  attacker:
+    container_name: 6v6-attacker
+    build:
+      context: .
+      dockerfile: attacker/Dockerfile
+    hostname: attacker
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.202
+    ports:
+      - "${PORT_ATTACKER_SSH:-2202}:22"
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+    volumes:
+      - attacker-home:/home/ccc
+    restart: unless-stopped
+
+  # ─── portal: 관리 대시보드 (FastAPI + Jinja2 + HTMX) ───────
+  portal:
+    container_name: 6v6-portal
+    build:
+      context: .
+      dockerfile: portal/Dockerfile
+    hostname: portal
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.50
+    ports:
+      - "${PORT_PORTAL:-8000}:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - secu-suricata-logs:/data/suricata-logs:ro
+      - web-apache-logs:/data/apache-logs:ro
+      - bastion-data:/data/bastion-data:ro
+      - siem-data:/data/siem-data:ro
+    environment:
+      BASTION_API_URL: http://bastion:9100
+      BASTION_API_KEY: ${API_KEY:-ccc-api-key-2026}
+    depends_on:
+      - bastion
+      - secu
+      - web
+      - siem
+      - attacker
+    restart: unless-stopped
+
+
+networks:
+  6v6-net:
+    name: 6v6-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.30.0/24
+          gateway: 10.20.30.254
+
+
+volumes:
+  bastion-data:
+  secu-suricata-logs:
+  web-apache-logs:
+  siem-data:
+  siem-wazuh:
+  attacker-home:
