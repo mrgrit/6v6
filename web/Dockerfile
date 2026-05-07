@@ -40,7 +40,13 @@ RUN if [ ! -f /etc/modsecurity/modsecurity.conf ]; then \
 COPY web/landing/ /var/www/landing/
 COPY web/vhosts/ /etc/apache2/sites-available/
 
-# 모든 vhost 활성화
+# Ubuntu 의 default vhost 제거 (Apache2 Default Page 가 뜨는 원인)
+RUN rm -f /etc/apache2/sites-enabled/000-default.conf \
+          /etc/apache2/sites-enabled/default-ssl.conf \
+          /etc/apache2/sites-available/000-default.conf \
+          /etc/apache2/sites-available/default-ssl.conf
+
+# 우리 vhost 만 활성화 (sites-available 의 *.conf 전부)
 RUN cd /etc/apache2/sites-available && \
     for f in *.conf; do a2ensite "$f"; done
 
