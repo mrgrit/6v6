@@ -218,26 +218,24 @@ cmd_smoke() {
     [ -z "$IP" ] && { echo "[6v6] cannot detect VM IP"; exit 1; }
     echo
     echo "[6v6] smoke test (VM_IP=$IP)"
-    echo "--- external ports ---------------------------------------------"
+    echo "--- external ports (4-tier: fw HAProxy is the only ingress) ----"
     check_url "landing"          "http://$IP/"
-    check_url "portal"           "http://$IP:8000/"
-    check_url "portal /health"   "http://$IP:8000/health"
-    check_url "siem"             "http://$IP:5601/"
     check_url "bastion API"      "http://$IP:9100/health"
     echo
-    echo "--- vhost reverse proxy (Host header) --------------------------"
+    echo "--- vhost reverse proxy (Host header — fw HAProxy routing) -----"
     for h in juice dvwa neobank govportal mediforum admin ai portal siem bastion; do
         local code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' \
             -H "Host: $h.6v6.lab" "http://$IP/" 2>/dev/null || echo 000)
-        if [[ "$code" =~ ^(200|301|302|307|308|401|403)$ ]]; then
+        # 200/302 = endpoint OK; 404 = backend alive (e.g. bastion API root); 503 still booting
+        if [[ "$code" =~ ^(200|301|302|307|308|401|403|404)$ ]]; then
             printf "  [OK]   %-22s HTTP %s\n" "$h.6v6.lab" "$code"
         else
-            printf "  [FAIL] %-22s HTTP %s\n" "$h.6v6.lab" "$code"
+            printf "  [FAIL] %-22s HTTP %s (backend may still be booting)\n" "$h.6v6.lab" "$code"
         fi
     done
     echo
     echo "--- container health -------------------------------------------"
-    for c in 6v6-bastion 6v6-secu 6v6-web 6v6-juiceshop 6v6-dvwa 6v6-neobank 6v6-govportal 6v6-mediforum 6v6-adminconsole 6v6-aicompanion 6v6-wazuh-indexer 6v6-siem 6v6-wazuh-dashboard 6v6-attacker 6v6-portal; do
+    for c in 6v6-bastion 6v6-attacker 6v6-fw 6v6-ips 6v6-web 6v6-juiceshop 6v6-dvwa 6v6-neobank 6v6-govportal 6v6-mediforum 6v6-adminconsole 6v6-aicompanion 6v6-wazuh-indexer 6v6-siem 6v6-wazuh-dashboard 6v6-portal; do
         if docker ps --format '{{.Names}}' | grep -q "^$c$"; then
             printf "  [OK]   %-19s %s\n" "$c" "$(docker ps --format '{{.Status}}' --filter name=^$c$)"
         else
@@ -247,17 +245,24 @@ cmd_smoke() {
     echo
     echo "--- Wazuh full stack -------------------------------------------"
     if docker ps --format '{{.Names}}' | grep -q '^6v6-siem$'; then
-        local running=$(docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null \
-                        | grep -c 'is running' || echo 0)
-        if [ "$running" -ge 6 ]; then
+        local running
+        running=$(docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null \
+                  | grep -c 'is running' 2>/dev/null | head -1 | tr -dc 0-9)
+        running=${running:-0}
+        if [ "${running:-0}" -ge 6 ] 2>/dev/null; then
             printf "  [OK]   wazuh-manager daemons %s running\n" "$running"
         else
             printf "  [WARN] wazuh-manager daemons %s running (still booting?)\n" "$running"
         fi
-        local agents=$(docker exec 6v6-siem /var/ossec/bin/agent_control -l 2>/dev/null \
-                       | grep -cE '^\s+ID:' || echo 0)
-        printf "  [%s]   Wazuh agents enrolled  %s (target 2+: secu/web)\n" \
-            "$([ "$agents" -ge 2 ] && echo OK || echo WARN)" "$agents"
+        local agents
+        agents=$(docker exec 6v6-siem /var/ossec/bin/agent_control -l 2>/dev/null \
+                 | grep -cE '^\s+ID:' 2>/dev/null | head -1 | tr -dc 0-9)
+        agents=${agents:-0}
+        if [ "${agents:-0}" -ge 3 ] 2>/dev/null; then
+            printf "  [OK]   Wazuh agents enrolled  %s (target 3+: fw/ips/web)\n" "$agents"
+        else
+            printf "  [WARN] Wazuh agents enrolled %s (target 3+: fw/ips/web)\n" "$agents"
+        fi
         if docker exec 6v6-siem test -s /var/ossec/logs/alerts/alerts.json 2>/dev/null; then
             local alines=$(docker exec 6v6-siem wc -l /var/ossec/logs/alerts/alerts.json 2>/dev/null | awk '{print $1}')
             printf "  [OK]   alerts.json lines      %s\n" "$alines"
