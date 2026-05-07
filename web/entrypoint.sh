@@ -3,11 +3,18 @@ set -e
 
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
-WAZUH_MANAGER="${WAZUH_MANAGER:-10.20.30.100}"
+WAZUH_MANAGER="${WAZUH_MANAGER:-10.20.32.100}"
+DEFAULT_GW="${DEFAULT_GW:-10.20.32.1}"
+
 if [[ ! "$WAZUH_MANAGER" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     RES_IP=$(getent hosts "$WAZUH_MANAGER" 2>/dev/null | awk '{print $1}' | head -1)
-    [ -n "$RES_IP" ] && WAZUH_MANAGER="$RES_IP" || WAZUH_MANAGER="10.20.30.100"
+    [ -n "$RES_IP" ] && WAZUH_MANAGER="$RES_IP" || WAZUH_MANAGER="10.20.32.100"
 fi
+
+# Override default route to go via ips (so ext-bound traffic goes back through chain)
+echo "[web] setting default route via $DEFAULT_GW (ips)"
+ip route del default 2>/dev/null || true
+ip route add default via "$DEFAULT_GW" 2>/dev/null || true
 
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo,www-data "$SSH_USER"

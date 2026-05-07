@@ -3,7 +3,13 @@ set -e
 
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
-SIEM_HOST="${SIEM_HOST:-siem}"
+SIEM_HOST="${SIEM_HOST:-10.20.32.100}"
+DEFAULT_GW="${DEFAULT_GW:-10.20.30.1}"
+
+# Default route via fw (so packets to dmz/int go through chain)
+echo "[bastion] setting default route via $DEFAULT_GW (fw)"
+ip route del default 2>/dev/null || true
+ip route add default via "$DEFAULT_GW" 2>/dev/null || true
 
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$SSH_USER"
@@ -14,21 +20,12 @@ fi
 # ~/.ssh/config — ProxyJump aliases
 mkdir -p /home/$SSH_USER/.ssh
 cat > /home/$SSH_USER/.ssh/config <<SSHCFG
-Host 6v6-secu secu
+# 4-tier chained topology — direct/jump aliases
+Host 6v6-fw fw
     HostName 10.20.30.1
     User $SSH_USER
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
-
-Host 6v6-web web
-    HostName 10.20.30.80
-    User $SSH_USER
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-
-# NOTE: 6v6-siem (wazuh-manager official image) has no sshd. Access:
-#   docker exec -it 6v6-siem bash    (from VM host)
-#   https://siem.6v6.lab/             (real Wazuh dashboard, admin/SecretPassword)
 
 Host 6v6-attacker attacker
     HostName 10.20.30.202
@@ -36,11 +33,31 @@ Host 6v6-attacker attacker
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 
-Host 6v6-portal portal
-    HostName 10.20.30.50
+# pipe/dmz/int reachable via fw (route forwarding is in place)
+Host 6v6-ips ips
+    HostName 10.20.31.2
     User $SSH_USER
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
+    ProxyJump 6v6-fw
+
+Host 6v6-web web
+    HostName 10.20.32.80
+    User $SSH_USER
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ProxyJump 6v6-fw
+
+Host 6v6-portal portal
+    HostName 10.20.32.50
+    User $SSH_USER
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ProxyJump 6v6-fw
+
+# Note: 6v6-siem (wazuh-manager official image) has no sshd. Access via:
+#   docker exec -it 6v6-siem bash    (from VM host)
+#   https://siem.6v6.lab/             (real Wazuh dashboard, admin/SecretPassword)
 SSHCFG
 chmod 600 /home/$SSH_USER/.ssh/config
 chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh

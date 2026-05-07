@@ -1,13 +1,14 @@
 name: 6v6
 
 # ─────────────────────────────────────────────────────────────
-# 6v6 — CCC infra single-VM docker version
-# Single bridge 10.20.30.0/24 + 7 vuln sites + full Wazuh stack.
+# 6v6 — 4-tier chained topology: ext -> pipe -> dmz -> int
+# Enforced packet flow: external -> fw -> ips -> [waf -> ] endpoint
 # ─────────────────────────────────────────────────────────────
 
 services:
 
-  # ─── bastion ─────────────────────────────────────────────
+  # ╭─ ext tier ─────────────────────────────────────────────╮
+  # │                                                        │
   bastion:
     container_name: 6v6-bastion
     build:
@@ -15,46 +16,95 @@ services:
       dockerfile: bastion/Dockerfile
     hostname: bastion
     networks:
-      6v6-net:
+      ext:
         ipv4_address: 10.20.30.201
     ports:
       - "${PORT_BASTION_SSH:-2204}:22"
-      - "${PORT_BASTION_API:-9100}:9100"
+    cap_add: [NET_ADMIN]
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
       API_KEY: ${API_KEY:-ccc-api-key-2026}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
-      SIEM_HOST: wazuh.manager
+      DEFAULT_GW: 10.20.30.1
     volumes:
       - bastion-data:/var/lib/bastion
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
-  # ─── secu: nftables + Suricata + Wazuh agent ───────────
-  secu:
-    container_name: 6v6-secu
+  attacker:
+    container_name: 6v6-attacker
     build:
       context: .
-      dockerfile: secu/Dockerfile
-    hostname: secu
+      dockerfile: attacker/Dockerfile
+    hostname: attacker
     networks:
-      6v6-net:
+      ext:
+        ipv4_address: 10.20.30.202
+    ports:
+      - "${PORT_ATTACKER_SSH:-2202}:22"
+    cap_add: [NET_ADMIN]
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+      DEFAULT_GW: 10.20.30.1
+    volumes:
+      - attacker-home:/home/ccc
+    restart: unless-stopped
+
+  # ╭─ Edge router: ext <-> pipe ────────────────────────────╮
+  fw:
+    container_name: 6v6-fw
+    build:
+      context: .
+      dockerfile: fw/Dockerfile
+    hostname: fw
+    networks:
+      ext:
         ipv4_address: 10.20.30.1
+      pipe:
+        ipv4_address: 10.20.31.1
+    ports:
+      - "${PORT_HTTP:-80}:80"
+      - "${PORT_HTTPS:-443}:443"
+      - "${PORT_BASTION_API:-9100}:9100"   # fw HAProxy → bastion API
     cap_add: [NET_ADMIN, NET_RAW]
     sysctls:
       net.ipv4.ip_forward: "1"
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
-      WAZUH_MANAGER: 10.20.30.100
-    volumes:
-      - secu-suricata-logs:/var/log/suricata
-    depends_on:
-      - siem
+      WAZUH_MANAGER: 10.20.32.100
+      IPS_PIPE_IP: 10.20.31.2
     restart: unless-stopped
 
-  # ─── web: Apache + ModSec + 8 vhost reverse proxy + Wazuh agent ──
+  # ╭─ IPS: pipe <-> dmz (Suricata sniff + ip_forward) ────╮
+  ips:
+    container_name: 6v6-ips
+    build:
+      context: .
+      dockerfile: ips/Dockerfile
+    hostname: ips
+    networks:
+      pipe:
+        ipv4_address: 10.20.31.2
+      dmz:
+        ipv4_address: 10.20.32.1
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+      WAZUH_MANAGER: 10.20.32.100
+      FW_PIPE_IP: 10.20.31.1
+    volumes:
+      - ips-suricata-logs:/var/log/suricata
+    depends_on:
+      - fw
+    restart: unless-stopped
+
+  # ╭─ DMZ tier: WAF + management services ──────────────────╮
   web:
     container_name: 6v6-web
     build:
@@ -62,19 +112,20 @@ services:
       dockerfile: web/Dockerfile
     hostname: web
     networks:
-      6v6-net:
-        ipv4_address: 10.20.30.80
-    ports:
-      - "${PORT_HTTP:-80}:80"
-      - "${PORT_HTTPS:-443}:443"
+      dmz:
+        ipv4_address: 10.20.32.80
+      int:
+        ipv4_address: 10.20.40.80
+    cap_add: [NET_ADMIN]
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
-      WAZUH_MANAGER: 10.20.30.100
+      WAZUH_MANAGER: 10.20.32.100
+      DEFAULT_GW: 10.20.32.1   # via ips
     volumes:
       - web-apache-logs:/var/log/apache2
     depends_on:
-      - siem
+      - ips
       - juiceshop
       - dvwa
       - neobank
@@ -82,84 +133,8 @@ services:
       - mediforum
       - adminconsole
       - aicompanion
-      - wazuh-dashboard
-      - portal
     restart: unless-stopped
 
-  # ─── 7 vuln backends ────────────────────────────────────
-  juiceshop:
-    container_name: 6v6-juiceshop
-    image: bkimminich/juice-shop:latest
-    hostname: juiceshop
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.81
-    restart: unless-stopped
-
-  dvwa:
-    container_name: 6v6-dvwa
-    image: vulnerables/web-dvwa:latest
-    hostname: dvwa
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.82
-    restart: unless-stopped
-
-  neobank:
-    container_name: 6v6-neobank
-    build: { context: ./vuln-sites/neobank }
-    hostname: neobank
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.83
-    environment: { PORT: 3001 }
-    restart: unless-stopped
-
-  govportal:
-    container_name: 6v6-govportal
-    build: { context: ./vuln-sites/govportal }
-    hostname: govportal
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.84
-    environment: { PORT: 3002 }
-    restart: unless-stopped
-
-  mediforum:
-    container_name: 6v6-mediforum
-    build: { context: ./vuln-sites/mediforum }
-    hostname: mediforum
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.85
-    environment: { PORT: 3003 }
-    restart: unless-stopped
-
-  adminconsole:
-    container_name: 6v6-adminconsole
-    build: { context: ./vuln-sites/adminconsole }
-    hostname: adminconsole
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.86
-    environment: { PORT: 3004 }
-    restart: unless-stopped
-
-  aicompanion:
-    container_name: 6v6-aicompanion
-    build: { context: ./vuln-sites/aicompanion }
-    hostname: aicompanion
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.87
-    environment:
-      PORT: 3005
-      LLM_BACKEND: ${AICOMPANION_LLM_BACKEND:-mock}
-      OLLAMA_URL: ${LLM_BASE_URL:-}
-      OLLAMA_MODEL: ${LLM_MODEL:-gemma3:4b}
-    restart: unless-stopped
-
-  # ─── Wazuh full stack — indexer + manager + dashboard ──
   wazuh-indexer:
     container_name: 6v6-wazuh-indexer
     image: wazuh/wazuh-indexer:4.10.0
@@ -179,12 +154,11 @@ services:
       - ./wazuh-config/wazuh_indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
       - ./wazuh-config/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
     networks:
-      6v6-net:
-        ipv4_address: 10.20.30.110
+      dmz:
+        ipv4_address: 10.20.32.110
         aliases: [wazuh.indexer, wazuh-indexer]
     restart: unless-stopped
 
-  # siem == wazuh-manager (official image). Service name 'siem' for CLI clarity.
   siem:
     container_name: 6v6-siem
     image: wazuh/wazuh-manager:4.10.0
@@ -204,16 +178,16 @@ services:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 655360, hard: 655360 }
     volumes:
-      - siem-etc:/var/ossec/etc
-      - siem-logs:/var/ossec/logs
-      - siem-queue:/var/ossec/queue
-      - siem-var:/var/ossec/var
+      - wazuh-manager-etc:/var/ossec/etc
+      - wazuh-manager-logs:/var/ossec/logs
+      - wazuh-manager-queue:/var/ossec/queue
+      - wazuh-manager-var:/var/ossec/var
       - ./wazuh-config/certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
       - ./wazuh-config/certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
       - ./wazuh-config/certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
     networks:
-      6v6-net:
-        ipv4_address: 10.20.30.100
+      dmz:
+        ipv4_address: 10.20.32.100
         aliases: [siem, wazuh.manager, wazuh-manager]
     restart: unless-stopped
 
@@ -237,34 +211,11 @@ services:
       - ./wazuh-config/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
       - ./wazuh-config/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
     networks:
-      6v6-net:
-        ipv4_address: 10.20.30.120
+      dmz:
+        ipv4_address: 10.20.32.120
         aliases: [wazuh.dashboard, wazuh-dashboard]
     restart: unless-stopped
 
-  # ─── attacker ────────────────────────────────────────────
-  attacker:
-    container_name: 6v6-attacker
-    build:
-      context: .
-      dockerfile: attacker/Dockerfile
-    hostname: attacker
-    networks:
-      6v6-net:
-        ipv4_address: 10.20.30.202
-    ports:
-      - "${PORT_ATTACKER_SSH:-2202}:22"
-    environment:
-      SSH_USER: ${SSH_USER:-ccc}
-      SSH_PASS: ${SSH_PASS:-ccc}
-      SIEM_HOST: 10.20.30.100
-    volumes:
-      - attacker-home:/home/ccc
-    depends_on:
-      - siem
-    restart: unless-stopped
-
-  # ─── portal ──────────────────────────────────────────────
   portal:
     container_name: 6v6-portal
     build:
@@ -272,39 +223,127 @@ services:
       dockerfile: portal/Dockerfile
     hostname: portal
     networks:
-      6v6-net:
-        ipv4_address: 10.20.30.50
+      dmz:
+        ipv4_address: 10.20.32.50
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - secu-suricata-logs:/data/suricata-logs:ro
+      - ips-suricata-logs:/data/suricata-logs:ro
       - web-apache-logs:/data/apache-logs:ro
       - bastion-data:/data/bastion-data:ro
-      - siem-logs:/data/wazuh:ro
+      - wazuh-manager-logs:/data/wazuh:ro
     environment:
-      BASTION_API_URL: http://bastion:9100
+      BASTION_API_URL: http://10.20.30.201:9100
       BASTION_API_KEY: ${API_KEY:-ccc-api-key-2026}
-    depends_on:
-      - bastion
-      - secu
-      - web
-      - siem
-      - attacker
+    depends_on: [siem, web]
+    restart: unless-stopped
+
+  # ╭─ int tier: vuln endpoints (behind WAF) ─────────────────╮
+  juiceshop:
+    container_name: 6v6-juiceshop
+    image: bkimminich/juice-shop:latest
+    hostname: juiceshop
+    networks:
+      int: { ipv4_address: 10.20.40.81 }
+    restart: unless-stopped
+
+  dvwa:
+    container_name: 6v6-dvwa
+    image: vulnerables/web-dvwa:latest
+    hostname: dvwa
+    networks:
+      int: { ipv4_address: 10.20.40.82 }
+    restart: unless-stopped
+
+  neobank:
+    container_name: 6v6-neobank
+    build: { context: ./vuln-sites/neobank }
+    hostname: neobank
+    networks:
+      int: { ipv4_address: 10.20.40.83 }
+    environment: { PORT: 3001 }
+    restart: unless-stopped
+
+  govportal:
+    container_name: 6v6-govportal
+    build: { context: ./vuln-sites/govportal }
+    hostname: govportal
+    networks:
+      int: { ipv4_address: 10.20.40.84 }
+    environment: { PORT: 3002 }
+    restart: unless-stopped
+
+  mediforum:
+    container_name: 6v6-mediforum
+    build: { context: ./vuln-sites/mediforum }
+    hostname: mediforum
+    networks:
+      int: { ipv4_address: 10.20.40.85 }
+    environment: { PORT: 3003 }
+    restart: unless-stopped
+
+  adminconsole:
+    container_name: 6v6-adminconsole
+    build: { context: ./vuln-sites/adminconsole }
+    hostname: adminconsole
+    networks:
+      int: { ipv4_address: 10.20.40.86 }
+    environment: { PORT: 3004 }
+    restart: unless-stopped
+
+  aicompanion:
+    container_name: 6v6-aicompanion
+    build: { context: ./vuln-sites/aicompanion }
+    hostname: aicompanion
+    networks:
+      int: { ipv4_address: 10.20.40.87 }
+    environment:
+      PORT: 3005
+      LLM_BACKEND: ${AICOMPANION_LLM_BACKEND:-mock}
+      OLLAMA_URL: ${LLM_BASE_URL:-}
+      OLLAMA_MODEL: ${LLM_MODEL:-gemma3:4b}
     restart: unless-stopped
 
 
 networks:
-  6v6-net:
-    name: 6v6-net
+  ext:
+    name: 6v6-ext
     driver: bridge
     ipam:
       config:
         - subnet: 10.20.30.0/24
           gateway: 10.20.30.254
 
+  pipe:
+    name: 6v6-pipe
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.31.0/24
+          gateway: 10.20.31.254
+
+  dmz:
+    name: 6v6-dmz
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.32.0/24
+          gateway: 10.20.32.254
+
+  int:
+    name: 6v6-int
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.40.0/24
+          gateway: 10.20.40.254
+
 
 volumes:
   bastion-data:
-  secu-suricata-logs:
+  ips-suricata-logs:
   web-apache-logs:
   wazuh-indexer-data:
   wazuh-manager-etc:

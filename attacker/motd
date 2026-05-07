@@ -2,23 +2,33 @@
   6v6 Attacker - pentest learning console
 ========================================================
 
-Installed tools (verify with `which <tool>`):
-  nmap       port scan, service detection
-  hydra      password brute-force
-  sqlmap     SQL injection automation
-  nikto      web vulnerability scanner
-  ncat       general TCP/UDP client
-  pwntools   exploit dev (Python)
+Installed tools:
+  nmap, hydra, sqlmap, nikto, ncat, pwntools
 
-Targets (single bridge 10.20.30.0/24):
-  10.20.30.1     secu     (gateway, nftables + Suricata)
-  10.20.30.80    web      (Apache + ModSec, /juice/ -> Juice Shop)
-  10.20.30.100   siem     (Wazuh manager + alert viewer :5601)
-  10.20.30.50    portal   (admin dashboard :8000)
+Network topology (4-tier chained):
+  ext (10.20.30.0/24)  <- you are here (10.20.30.202)
+       |
+       v   default route via fw (10.20.30.1)
+  fw (10.20.30.1) ext + (10.20.31.1) pipe
+       |
+       v
+  ips (10.20.31.2) pipe + (10.20.32.1) dmz   <- Suricata IDS
+       |
+       v
+  dmz (10.20.32.0/24): web, siem, portal, wazuh-*
+       |
+       v   web acts as WAF (Apache + ModSec)
+  int (10.20.40.0/24): juiceshop, dvwa, neobank, ...
+
+All HTTP attacks traverse: attacker -> fw -> ips -> web -> vuln
+Internal services (siem, dashboard, portal): -> fw -> ips -> [target]
 
 Quick start:
-  nmap -sT -p 22,80,443,3000,5601,8000 10.20.30.80
-  curl -A 'sqlmap/1.7' http://10.20.30.80/juice/
-  hydra -l admin -P /usr/share/wordlists/rockyou.txt 10.20.30.80 http-post-form ...
-  nikto -h http://10.20.30.80/
+  curl http://juice.6v6.lab/                    (vuln, via WAF)
+  curl -A 'sqlmap/1.7' http://juice.6v6.lab/    (WAF blocks, IDS alerts)
+  nmap -sT -p 80,443 10.20.32.80                (web direct, via fw+ips)
+  nikto -h http://juice.6v6.lab/
+
+Browse SIEM (no WAF in path):
+  https://siem.6v6.lab/   (admin / SecretPassword)
 ========================================================

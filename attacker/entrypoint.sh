@@ -3,7 +3,13 @@ set -e
 
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
-SIEM_HOST="${SIEM_HOST:-siem}"
+SIEM_HOST="${SIEM_HOST:-10.20.32.100}"
+DEFAULT_GW="${DEFAULT_GW:-10.20.30.1}"
+
+# Default route via fw (so packets to dmz/int go through chain)
+echo "[attacker] setting default route via $DEFAULT_GW (fw)"
+ip route del default 2>/dev/null || true
+ip route add default via "$DEFAULT_GW" 2>/dev/null || true
 
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$SSH_USER"
