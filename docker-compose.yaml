@@ -1,14 +1,13 @@
 name: 6v6
 
 # ─────────────────────────────────────────────────────────────
-# 6v6 — CCC 인프라의 단일 docker-compose 버전.
-# 단일 bridge network 10.20.30.0/24 — 강의 자료 IP 스킴 그대로.
-# 7 취약 웹 + Wazuh 통합 (agent + syslog 두 패러다임).
+# 6v6 — CCC infra single-VM docker version
+# Single bridge 10.20.30.0/24 + 7 vuln sites + full Wazuh stack.
 # ─────────────────────────────────────────────────────────────
 
 services:
 
-  # ─── bastion: SSH 점프 + Bastion API + rsyslog forwarder ──
+  # ─── bastion ─────────────────────────────────────────────
   bastion:
     container_name: 6v6-bastion
     build:
@@ -26,13 +25,13 @@ services:
       SSH_PASS: ${SSH_PASS:-ccc}
       API_KEY: ${API_KEY:-ccc-api-key-2026}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
-      SIEM_HOST: siem
+      SIEM_HOST: wazuh.manager
     volumes:
       - bastion-data:/var/lib/bastion
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
-  # ─── secu: nftables + Suricata + Wazuh agent ───────────────
+  # ─── secu: nftables + Suricata + Wazuh agent ───────────
   secu:
     container_name: 6v6-secu
     build:
@@ -42,22 +41,20 @@ services:
     networks:
       6v6-net:
         ipv4_address: 10.20.30.1
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
+    cap_add: [NET_ADMIN, NET_RAW]
     sysctls:
       net.ipv4.ip_forward: "1"
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
-      WAZUH_MANAGER: siem
+      WAZUH_MANAGER: 10.20.30.100
     volumes:
       - secu-suricata-logs:/var/log/suricata
     depends_on:
       - siem
     restart: unless-stopped
 
-  # ─── web: Apache + ModSec + 랜딩 + 7 vuln reverse proxy + Wazuh agent ──
+  # ─── web: Apache + ModSec + 8 vhost reverse proxy + Wazuh agent ──
   web:
     container_name: 6v6-web
     build:
@@ -73,7 +70,7 @@ services:
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
-      WAZUH_MANAGER: siem
+      WAZUH_MANAGER: 10.20.30.100
     volumes:
       - web-apache-logs:/var/log/apache2
     depends_on:
@@ -85,9 +82,11 @@ services:
       - mediforum
       - adminconsole
       - aicompanion
+      - wazuh-dashboard
+      - portal
     restart: unless-stopped
 
-  # ─── 취약 웹 7개 (web 의 reverse proxy 만 접근, 외부 노출 X) ──
+  # ─── 7 vuln backends ────────────────────────────────────
   juiceshop:
     container_name: 6v6-juiceshop
     image: bkimminich/juice-shop:latest
@@ -108,56 +107,47 @@ services:
 
   neobank:
     container_name: 6v6-neobank
-    build:
-      context: ./vuln-sites/neobank
+    build: { context: ./vuln-sites/neobank }
     hostname: neobank
     networks:
       6v6-net:
         ipv4_address: 10.20.30.83
-    environment:
-      PORT: 3001
+    environment: { PORT: 3001 }
     restart: unless-stopped
 
   govportal:
     container_name: 6v6-govportal
-    build:
-      context: ./vuln-sites/govportal
+    build: { context: ./vuln-sites/govportal }
     hostname: govportal
     networks:
       6v6-net:
         ipv4_address: 10.20.30.84
-    environment:
-      PORT: 3002
+    environment: { PORT: 3002 }
     restart: unless-stopped
 
   mediforum:
     container_name: 6v6-mediforum
-    build:
-      context: ./vuln-sites/mediforum
+    build: { context: ./vuln-sites/mediforum }
     hostname: mediforum
     networks:
       6v6-net:
         ipv4_address: 10.20.30.85
-    environment:
-      PORT: 3003
+    environment: { PORT: 3003 }
     restart: unless-stopped
 
   adminconsole:
     container_name: 6v6-adminconsole
-    build:
-      context: ./vuln-sites/adminconsole
+    build: { context: ./vuln-sites/adminconsole }
     hostname: adminconsole
     networks:
       6v6-net:
         ipv4_address: 10.20.30.86
-    environment:
-      PORT: 3004
+    environment: { PORT: 3004 }
     restart: unless-stopped
 
   aicompanion:
     container_name: 6v6-aicompanion
-    build:
-      context: ./vuln-sites/aicompanion
+    build: { context: ./vuln-sites/aicompanion }
     hostname: aicompanion
     networks:
       6v6-net:
@@ -169,27 +159,90 @@ services:
       OLLAMA_MODEL: ${LLM_MODEL:-gemma3:4b}
     restart: unless-stopped
 
-  # ─── siem: Wazuh manager (agent + syslog 둘 다 입력) + viewer ──
+  # ─── Wazuh full stack — indexer + manager + dashboard ──
+  wazuh-indexer:
+    container_name: 6v6-wazuh-indexer
+    image: wazuh/wazuh-indexer:4.10.0
+    hostname: wazuh.indexer
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./wazuh-config/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem
+      - ./wazuh-config/certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
+      - ./wazuh-config/certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
+      - ./wazuh-config/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem
+      - ./wazuh-config/certs/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem
+      - ./wazuh-config/wazuh_indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
+      - ./wazuh-config/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.110
+        aliases: [wazuh.indexer, wazuh-indexer]
+    restart: unless-stopped
+
+  # siem == wazuh-manager (official image). Service name 'siem' for CLI clarity.
   siem:
     container_name: 6v6-siem
-    build:
-      context: .
-      dockerfile: siem/Dockerfile
-    hostname: siem
+    image: wazuh/wazuh-manager:4.10.0
+    hostname: wazuh.manager
+    depends_on: [wazuh-indexer]
+    environment:
+      INDEXER_URL: https://wazuh.indexer:9200
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: SecretPassword
+      FILEBEAT_SSL_VERIFICATION_MODE: full
+      SSL_CERTIFICATE_AUTHORITIES: /etc/ssl/root-ca.pem
+      SSL_CERTIFICATE: /etc/ssl/filebeat.pem
+      SSL_KEY: /etc/ssl/filebeat.key
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: MyS3cr37P450r.*-
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 655360, hard: 655360 }
+    volumes:
+      - siem-etc:/var/ossec/etc
+      - siem-logs:/var/ossec/logs
+      - siem-queue:/var/ossec/queue
+      - siem-var:/var/ossec/var
+      - ./wazuh-config/certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
+      - ./wazuh-config/certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
+      - ./wazuh-config/certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
     networks:
       6v6-net:
         ipv4_address: 10.20.30.100
-    ports:
-      - "${PORT_SIEM_DASH:-5601}:5601"
-    environment:
-      SSH_USER: ${SSH_USER:-ccc}
-      SSH_PASS: ${SSH_PASS:-ccc}
-    volumes:
-      - siem-data:/var/lib/siem
-      - siem-wazuh:/var/ossec
+        aliases: [siem, wazuh.manager, wazuh-manager]
     restart: unless-stopped
 
-  # ─── attacker: pentest 도구 + rsyslog forwarder ────────────
+  wazuh-dashboard:
+    container_name: 6v6-wazuh-dashboard
+    image: wazuh/wazuh-dashboard:4.10.0
+    hostname: wazuh.dashboard
+    depends_on: [wazuh-indexer, siem]
+    environment:
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: SecretPassword
+      WAZUH_API_URL: https://wazuh.manager
+      DASHBOARD_USERNAME: kibanaserver
+      DASHBOARD_PASSWORD: kibanaserver
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: MyS3cr37P450r.*-
+    volumes:
+      - ./wazuh-config/certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - ./wazuh-config/certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+      - ./wazuh-config/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
+      - ./wazuh-config/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - ./wazuh-config/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.120
+        aliases: [wazuh.dashboard, wazuh-dashboard]
+    restart: unless-stopped
+
+  # ─── attacker ────────────────────────────────────────────
   attacker:
     container_name: 6v6-attacker
     build:
@@ -204,14 +257,14 @@ services:
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
-      SIEM_HOST: siem
+      SIEM_HOST: 10.20.30.100
     volumes:
       - attacker-home:/home/ccc
     depends_on:
       - siem
     restart: unless-stopped
 
-  # ─── portal: 관리 대시보드 ───────────────────────────────
+  # ─── portal ──────────────────────────────────────────────
   portal:
     container_name: 6v6-portal
     build:
@@ -221,15 +274,12 @@ services:
     networks:
       6v6-net:
         ipv4_address: 10.20.30.50
-    ports:
-      - "${PORT_PORTAL:-8000}:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - secu-suricata-logs:/data/suricata-logs:ro
       - web-apache-logs:/data/apache-logs:ro
       - bastion-data:/data/bastion-data:ro
-      - siem-data:/data/siem-data:ro
-      - siem-wazuh:/data/wazuh:ro
+      - siem-logs:/data/wazuh:ro
     environment:
       BASTION_API_URL: http://bastion:9100
       BASTION_API_KEY: ${API_KEY:-ccc-api-key-2026}
@@ -256,6 +306,9 @@ volumes:
   bastion-data:
   secu-suricata-logs:
   web-apache-logs:
-  siem-data:
-  siem-wazuh:
+  wazuh-indexer-data:
+  wazuh-manager-etc:
+  wazuh-manager-logs:
+  wazuh-manager-queue:
+  wazuh-manager-var:
   attacker-home:

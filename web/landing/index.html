@@ -25,6 +25,8 @@ a.card .meta { color: var(--muted); font-size: 0.86em; display: block; margin-to
 .tag.ai { background: #f3e8ff; color: #7c3aed; }
 pre { background: #1e293b; color: #e2e8f0; padding: 14px 18px; border-radius: 8px; overflow-x: auto; font-size: 0.88em; }
 code { background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-size: 0.92em; }
+/* pre 내부의 code 는 배경/색 상속으로 가독성 확보 (외부 inline code 와 분리) */
+pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; border-radius: 0; }
 table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9em; }
 th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; }
 th { background: #f1f5f9; }
@@ -61,8 +63,8 @@ th { background: #f1f5f9; }
     <span class="meta">portal.6v6.lab — 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Wazuh</span>
   </a>
   <a class="card" href="http://siem.6v6.lab/">
-    <span class="tag defense">방어</span>SIEM (Wazuh)
-    <span class="meta">siem.6v6.lab — agent + syslog 통합 알림 viewer</span>
+    <span class="tag defense">방어</span>SIEM (Wazuh Dashboard)
+    <span class="meta">siem.6v6.lab — 실제 Wazuh 4.10 dashboard. 로그인: admin / SecretPassword</span>
   </a>
   <a class="card" href="http://bastion.6v6.lab/health">
     <span class="tag mgmt">관리</span>Bastion API
@@ -94,9 +96,13 @@ Host 6v6-attacker
   Port 2202
   User ccc
 
-Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
+Host 6v6-secu 6v6-web 6v6-portal
   ProxyJump 6v6-bastion
-  User ccc</code></pre>
+  User ccc
+
+# 6v6-siem (Wazuh manager 공식 이미지) 는 sshd 없음.
+#   docker exec -it 6v6-siem bash       (VM 호스트에서)
+#   https://siem.6v6.lab/                (Wazuh dashboard)</code></pre>
 
 <p class="muted">기본 SSH 비밀번호: <code>ccc</code> · Bastion API 키: <code>ccc-api-key-2026</code></p>
 
@@ -113,7 +119,9 @@ Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
 <tr><td>6v6-mediforum</td><td>10.20.30.85</td><td>MediForum (Flask)</td><td>—</td></tr>
 <tr><td>6v6-adminconsole</td><td>10.20.30.86</td><td>AdminConsole (Flask)</td><td>—</td></tr>
 <tr><td>6v6-aicompanion</td><td>10.20.30.87</td><td>AICompanion (Flask + LLM)</td><td>—</td></tr>
-<tr><td>6v6-siem</td><td>10.20.30.100</td><td>Wazuh manager + alert viewer + cti-collector</td><td>5601</td></tr>
+<tr><td>6v6-siem</td><td>10.20.30.100</td><td>Wazuh manager (official 4.10)</td><td>—</td></tr>
+<tr><td>6v6-wazuh-indexer</td><td>10.20.30.110</td><td>Wazuh indexer (OpenSearch)</td><td>—</td></tr>
+<tr><td>6v6-wazuh-dashboard</td><td>10.20.30.120</td><td>Wazuh dashboard (siem.6v6.lab)</td><td>—</td></tr>
 <tr><td>6v6-attacker</td><td>10.20.30.202</td><td>nmap, hydra, sqlmap, nikto</td><td>2202</td></tr>
 <tr><td>6v6-portal</td><td>10.20.30.50</td><td>관리 대시보드</td><td>8000</td></tr>
 </table>

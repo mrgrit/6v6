@@ -26,11 +26,9 @@ Host 6v6-web web
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 
-Host 6v6-siem siem
-    HostName 10.20.30.100
-    User $SSH_USER
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
+# NOTE: 6v6-siem (wazuh-manager official image) has no sshd. Access:
+#   docker exec -it 6v6-siem bash    (from VM host)
+#   https://siem.6v6.lab/             (real Wazuh dashboard, admin/SecretPassword)
 
 Host 6v6-attacker attacker
     HostName 10.20.30.202
@@ -51,9 +49,11 @@ cat > /etc/motd <<MOTD
 ========================================================
   6v6 Bastion - single entry point for the lab
 ========================================================
-ProxyJump aliases: ssh secu | ssh web | ssh siem | ssh attacker
+ProxyJump aliases: ssh secu | ssh web | ssh attacker
+SIEM (Wazuh manager) has no SSH (official image) -
+  Use: docker exec -it 6v6-siem bash  (from VM host)
+  Or:  https://siem.6v6.lab/         (real Wazuh dashboard)
 API: http://localhost:9100/health
-All SSH events forwarded via syslog to SIEM ($SIEM_HOST).
 ========================================================
 MOTD
 

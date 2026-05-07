@@ -110,14 +110,35 @@ cmd_check_docker() {
     fi
 }
 
+cmd_check_kernel() {
+    # wazuh-indexer (OpenSearch) requires vm.max_map_count >= 262144
+    local cur
+    cur=$(sysctl -n vm.max_map_count 2>/dev/null || echo 0)
+    if [ "$cur" -lt 262144 ]; then
+        echo "[6v6] tuning vm.max_map_count for wazuh-indexer (OpenSearch)"
+        if sudo -n true 2>/dev/null; then
+            sudo sysctl -w vm.max_map_count=262144 >/dev/null
+            grep -q '^vm.max_map_count' /etc/sysctl.conf 2>/dev/null || \
+                echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf >/dev/null
+        else
+            echo "[6v6]   sudo unavailable; please run manually:"
+            echo "         sudo sysctl -w vm.max_map_count=262144"
+            echo "         echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf"
+        fi
+    fi
+}
+
 cmd_up() {
     cmd_check_docker
+    cmd_check_kernel
     ensure_env
-    echo "[6v6] docker compose build + up — first build takes 8-12 min (Wazuh + 7 vuln sites)."
+    echo "[6v6] docker compose build + up — first run downloads 6 GB of images,"
+    echo "      build + start takes 10-15 min (Wazuh full stack + 7 vuln sites)."
     docker compose build
     docker compose up -d
     echo
-    echo "[6v6] up done. Run 'bash 6v6.sh smoke' for health check."
+    echo "[6v6] up done. Wazuh stack takes 1-2 min after 'up' to fully initialize."
+    echo "      Run 'bash 6v6.sh smoke' after ~2 min for full health check."
     cmd_status
 }
 
@@ -216,7 +237,7 @@ cmd_smoke() {
     done
     echo
     echo "--- container health -------------------------------------------"
-    for c in 6v6-bastion 6v6-secu 6v6-web 6v6-juiceshop 6v6-dvwa 6v6-neobank 6v6-govportal 6v6-mediforum 6v6-adminconsole 6v6-aicompanion 6v6-siem 6v6-attacker 6v6-portal; do
+    for c in 6v6-bastion 6v6-secu 6v6-web 6v6-juiceshop 6v6-dvwa 6v6-neobank 6v6-govportal 6v6-mediforum 6v6-adminconsole 6v6-aicompanion 6v6-wazuh-indexer 6v6-siem 6v6-wazuh-dashboard 6v6-attacker 6v6-portal; do
         if docker ps --format '{{.Names}}' | grep -q "^$c$"; then
             printf "  [OK]   %-19s %s\n" "$c" "$(docker ps --format '{{.Status}}' --filter name=^$c$)"
         else
@@ -224,32 +245,48 @@ cmd_smoke() {
         fi
     done
     echo
-    echo "--- Wazuh integration ------------------------------------------"
+    echo "--- Wazuh full stack -------------------------------------------"
     if docker ps --format '{{.Names}}' | grep -q '^6v6-siem$'; then
         local running=$(docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null \
                         | grep -c 'is running' || echo 0)
-        local total=$(docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null \
-                      | grep -cE 'is running|not running' || echo 0)
         if [ "$running" -ge 6 ]; then
-            printf "  [OK]   wazuh-manager daemons %s/%s running\n" "$running" "$total"
+            printf "  [OK]   wazuh-manager daemons %s running\n" "$running"
         else
-            printf "  [WARN] wazuh-manager daemons %s/%s running\n" "$running" "$total"
+            printf "  [WARN] wazuh-manager daemons %s running (still booting?)\n" "$running"
         fi
         local agents=$(docker exec 6v6-siem /var/ossec/bin/agent_control -l 2>/dev/null \
                        | grep -cE '^\s+ID:' || echo 0)
-        if [ "$agents" -ge 2 ]; then
-            printf "  [OK]   Wazuh agents enrolled  %s (secu/web)\n" "$agents"
-        else
-            printf "  [WARN] Wazuh agents enrolled %s (target 2+) — agent-auth result\n" "$agents"
-        fi
+        printf "  [%s]   Wazuh agents enrolled  %s (target 2+: secu/web)\n" \
+            "$([ "$agents" -ge 2 ] && echo OK || echo WARN)" "$agents"
         if docker exec 6v6-siem test -s /var/ossec/logs/alerts/alerts.json 2>/dev/null; then
             local alines=$(docker exec 6v6-siem wc -l /var/ossec/logs/alerts/alerts.json 2>/dev/null | awk '{print $1}')
             printf "  [OK]   alerts.json lines      %s\n" "$alines"
         else
-            printf "  [INFO] alerts.json empty      — fire SQLi from attacker, recheck\n"
+            printf "  [INFO] alerts.json empty      — fire test traffic, recheck\n"
         fi
     else
-        echo "  [FAIL] siem container not running"
+        echo "  [FAIL] siem (wazuh-manager) not running"
+    fi
+    # indexer (OpenSearch) cluster health
+    if docker ps --format '{{.Names}}' | grep -q '^6v6-wazuh-indexer$'; then
+        local idx_status=$(docker exec 6v6-wazuh-indexer curl -sk -m 5 \
+            -u admin:SecretPassword https://localhost:9200/_cluster/health 2>/dev/null \
+            | grep -oE '"status":"[a-z]+"' | head -1)
+        if echo "$idx_status" | grep -qE 'green|yellow'; then
+            printf "  [OK]   wazuh-indexer cluster %s\n" "$idx_status"
+        else
+            printf "  [WARN] wazuh-indexer cluster %s (still booting?)\n" "${idx_status:-no-response}"
+        fi
+    fi
+    # dashboard (Kibana fork)
+    if docker ps --format '{{.Names}}' | grep -q '^6v6-wazuh-dashboard$'; then
+        local d_code=$(docker exec 6v6-wazuh-dashboard curl -sk -m 5 \
+            -o /dev/null -w '%{http_code}' https://localhost:5601/app/wazuh 2>/dev/null || echo 000)
+        if [[ "$d_code" =~ ^(200|302)$ ]]; then
+            printf "  [OK]   wazuh-dashboard listen (HTTP %s on :5601)\n" "$d_code"
+        else
+            printf "  [WARN] wazuh-dashboard responded HTTP %s\n" "$d_code"
+        fi
     fi
     echo
     echo "--- SSH bastion ------------------------------------------------"
