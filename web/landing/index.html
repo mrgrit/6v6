@@ -42,8 +42,8 @@ th { background: #f1f5f9; }
 </div>
 
 <h2>취약 웹 7개 (학습용)</h2>
-<p class="muted">학생 PC <code>/etc/hosts</code> 에 7개 도메인 추가 (또는 secu 의 사설 DNS 사용):
-<code>&lt;VM_IP&gt; juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab</code></p>
+<p class="muted">학생 PC <code>/etc/hosts</code> 에 다음 한 줄 추가:
+<code>&lt;VM_IP&gt; 6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab</code></p>
 <div class="grid">
   <a class="card" href="http://juice.6v6.lab/"><span class="tag attack">취약</span>OWASP Juice Shop<span class="meta">juice.6v6.lab — 종합 OWASP Top 10</span></a>
   <a class="card" href="http://dvwa.6v6.lab/"><span class="tag attack">취약</span>DVWA<span class="meta">dvwa.6v6.lab — Damn Vulnerable Web App</span></a>
@@ -56,19 +56,20 @@ th { background: #f1f5f9; }
 
 <h2>관리/모니터링</h2>
 <div class="grid">
-  <a class="card" href="" onclick="this.href='http://'+location.hostname+':8000/'">
+  <a class="card" href="http://portal.6v6.lab/">
     <span class="tag mgmt">관리</span>관리 포털
-    <span class="meta">:8000 — 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Wazuh</span>
+    <span class="meta">portal.6v6.lab — 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Wazuh</span>
   </a>
-  <a class="card" href="" onclick="this.href='http://'+location.hostname+':5601/'">
+  <a class="card" href="http://siem.6v6.lab/">
     <span class="tag defense">방어</span>SIEM (Wazuh)
-    <span class="meta">:5601 — agent + syslog 통합 알림 viewer</span>
+    <span class="meta">siem.6v6.lab — agent + syslog 통합 알림 viewer</span>
   </a>
-  <a class="card" href="" onclick="this.href='http://'+location.hostname+':9100/health'">
+  <a class="card" href="http://bastion.6v6.lab/health">
     <span class="tag mgmt">관리</span>Bastion API
-    <span class="meta">:9100/health — 점프 호스트 헬스</span>
+    <span class="meta">bastion.6v6.lab/health — 점프 호스트 헬스</span>
   </a>
 </div>
+<p class="muted">위 도메인 모두 web 컨테이너의 Apache + ModSecurity 를 통과하여 백엔드로 reverse proxy. 직접 IP:port 접근도 그대로 살아있음 (관리/디버그용).</p>
 
 <h2>로그 통합 — Wazuh agent + syslog 두 패러다임</h2>
 <table>

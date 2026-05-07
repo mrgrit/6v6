@@ -150,15 +150,25 @@ cmd_status() {
     echo
     docker compose ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
     echo
-    echo "--- Browser access ---------------------------------------------"
-    echo "  http://$IP/                  Landing page"
-    echo "  http://$IP:8000/             Admin Portal"
-    echo "  http://$IP:5601/             SIEM (Wazuh lite UI)"
-    echo "  http://$IP:9100/health       Bastion API health"
+    echo "--- Browser access (all via Apache vhosts) --------------------"
+    echo "  http://6v6.lab/              Landing page (or http://$IP/)"
+    echo "  http://juice.6v6.lab/        OWASP Juice Shop"
+    echo "  http://dvwa.6v6.lab/         DVWA"
+    echo "  http://neobank.6v6.lab/      NeoBank"
+    echo "  http://govportal.6v6.lab/    GovPortal"
+    echo "  http://mediforum.6v6.lab/    MediForum"
+    echo "  http://admin.6v6.lab/        AdminConsole"
+    echo "  http://ai.6v6.lab/           AICompanion"
+    echo "  http://portal.6v6.lab/       Admin Portal"
+    echo "  http://siem.6v6.lab/         SIEM (Wazuh lite UI)"
+    echo "  http://bastion.6v6.lab/health  Bastion API"
+    echo
+    echo "  Direct port access (debug, bypasses Apache):"
+    echo "    http://$IP:8000/  http://$IP:5601/  http://$IP:9100/health"
     echo
     echo "  Add to student PC hosts file (/etc/hosts on linux/mac,"
     echo "  C:\\Windows\\System32\\drivers\\etc\\hosts on Windows):"
-    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab"
+    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab"
     echo
     echo "--- SSH (ProxyJump) --------------------------------------------"
     echo "  ssh -p 2204 ccc@$IP            # bastion (jump host)"
@@ -195,7 +205,7 @@ cmd_smoke() {
     check_url "bastion API"      "http://$IP:9100/health"
     echo
     echo "--- vhost reverse proxy (Host header) --------------------------"
-    for h in juice dvwa neobank govportal mediforum admin ai; do
+    for h in juice dvwa neobank govportal mediforum admin ai portal siem bastion; do
         local code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' \
             -H "Host: $h.6v6.lab" "http://$IP/" 2>/dev/null || echo 000)
         if [[ "$code" =~ ^(200|301|302|307|308|401|403)$ ]]; then

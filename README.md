@@ -113,14 +113,14 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 - 리눅스/맥: `/etc/hosts` (sudo)
 
 ```
-<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab
+<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab
 ```
 
-그 후 브라우저:
+그 후 브라우저 — **모두 동일 패턴 `<service>.6v6.lab` 으로 접근** (web 의 Apache vhost 가 reverse proxy):
 
 | URL | 대상 | 비고 |
 |-----|------|------|
-| `http://<VM_IP>/` | **랜딩 페이지** | 모든 사이트 링크 모음 |
+| `http://6v6.lab/` 또는 `http://<VM_IP>/` | **랜딩 페이지** | 모든 사이트 링크 |
 | `http://juice.6v6.lab/` | OWASP Juice Shop | 가입 자유 / `admin@juice-sh.op` 비밀번호 추측 |
 | `http://dvwa.6v6.lab/` | DVWA | `admin / password` |
 | `http://neobank.6v6.lab/` | NeoBank (가상 은행) | 30 취약점 |
@@ -128,9 +128,13 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 | `http://mediforum.6v6.lab/` | MediForum (가상 의료) | 게시판 + 업로드 |
 | `http://admin.6v6.lab/` | AdminConsole | RCE/XXE/SSRF/pickle |
 | `http://ai.6v6.lab/` | AICompanion | OWASP LLM Top 10 (mock LLM) |
-| `http://<VM_IP>:8000/` | **관리 포털** | 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Agent |
-| `http://<VM_IP>:5601/` | **SIEM (Wazuh lite)** | 알림 + Top rule + level 분포 (10초 자동 새로고침) |
-| `http://<VM_IP>:9100/health` | Bastion API | 헬스 체크 (X-API-Key 없이 접근 가능) |
+| `http://portal.6v6.lab/` | **관리 포털** | 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Agent |
+| `http://siem.6v6.lab/` | **SIEM (Wazuh lite)** | 알림 + Top rule + level 분포 |
+| `http://bastion.6v6.lab/health` | Bastion API | 헬스 체크 |
+
+> **직접 포트 접근도 살아있음** (관리/디버그용): `http://<VM_IP>:8000/` (portal),
+> `http://<VM_IP>:5601/` (siem), `http://<VM_IP>:9100/health` (bastion).
+> 이 경로는 ModSecurity 검사를 거치지 않음 — 학습 비교용.
 
 ### 2. SSH (Bastion ProxyJump 모델)
 
