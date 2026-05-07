@@ -8,12 +8,13 @@
 :root { --accent: #2563eb; --bg: #f8fafc; --card: #fff; --muted: #64748b; --border: #e2e8f0; }
 * { box-sizing: border-box; }
 body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: #0f172a; margin: 0; line-height: 1.55; }
-.wrap { max-width: 980px; margin: 2em auto; padding: 0 1.2em; }
+.wrap { max-width: 1100px; margin: 2em auto; padding: 0 1.2em; }
 h1 { font-size: 1.9em; border-bottom: 3px solid var(--accent); padding-bottom: 10px; color: var(--accent); }
 h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-top: 2.4em; }
 .banner { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 6px; margin: 1.2em 0; font-size: 0.95em; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 1em 0; }
-@media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+.grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 1em 0; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
 a.card { display: block; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: #0f172a; background: var(--card); transition: all .15s; }
 a.card:hover { border-color: var(--accent); background: #eff6ff; transform: translateY(-1px); }
 a.card .meta { color: var(--muted); font-size: 0.86em; display: block; margin-top: 3px; }
@@ -21,10 +22,11 @@ a.card .meta { color: var(--muted); font-size: 0.86em; display: block; margin-to
 .tag.attack { background: #fee2e2; color: #b91c1c; }
 .tag.defense { background: #d1fae5; color: #047857; }
 .tag.mgmt { background: #dbeafe; color: #1d4ed8; }
+.tag.ai { background: #f3e8ff; color: #7c3aed; }
 pre { background: #1e293b; color: #e2e8f0; padding: 14px 18px; border-radius: 8px; overflow-x: auto; font-size: 0.88em; }
 code { background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-size: 0.92em; }
-table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.92em; }
-th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9em; }
+th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; }
 th { background: #f1f5f9; }
 .muted { color: var(--muted); font-size: 0.88em; }
 </style>
@@ -36,35 +38,51 @@ th { background: #f1f5f9; }
 
 <div class="banner">
 이 페이지는 <code>6v6-web</code> (Apache + ModSecurity) 가 응답한 랜딩 페이지입니다.
-모든 트래픽은 <code>web</code> 컨테이너의 ModSecurity 검사를 통과한 후 백엔드로 전달됩니다.
+<strong>모든 취약 사이트 트래픽은 web 의 ModSecurity 검사를 통과한 후</strong> 백엔드 컨테이너로 전달됩니다.
 </div>
 
-<h2>취약 웹 (학습용)</h2>
+<h2>취약 웹 7개 (학습용)</h2>
+<p class="muted">학생 PC <code>/etc/hosts</code> 에 7개 도메인 추가 (또는 secu 의 사설 DNS 사용):
+<code>&lt;VM_IP&gt; juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab</code></p>
 <div class="grid">
-  <a class="card" href="/juice/">
-    <span class="tag attack">취약</span>OWASP Juice Shop
-    <span class="meta">/juice/ — Apache + ModSecurity reverse proxy 통해 접근</span>
-  </a>
+  <a class="card" href="http://juice.6v6.lab/"><span class="tag attack">취약</span>OWASP Juice Shop<span class="meta">juice.6v6.lab — 종합 OWASP Top 10</span></a>
+  <a class="card" href="http://dvwa.6v6.lab/"><span class="tag attack">취약</span>DVWA<span class="meta">dvwa.6v6.lab — Damn Vulnerable Web App</span></a>
+  <a class="card" href="http://neobank.6v6.lab/"><span class="tag attack">취약</span>NeoBank<span class="meta">neobank.6v6.lab — 가상 은행 (30 취약점)</span></a>
+  <a class="card" href="http://govportal.6v6.lab/"><span class="tag attack">취약</span>GovPortal<span class="meta">govportal.6v6.lab — 가상 정부 포털 (25 취약점)</span></a>
+  <a class="card" href="http://mediforum.6v6.lab/"><span class="tag attack">취약</span>MediForum<span class="meta">mediforum.6v6.lab — 가상 의료 커뮤니티</span></a>
+  <a class="card" href="http://admin.6v6.lab/"><span class="tag attack">취약</span>AdminConsole<span class="meta">admin.6v6.lab — RCE/XXE/SSRF 종합</span></a>
+  <a class="card" href="http://ai.6v6.lab/"><span class="tag ai">AI</span>AICompanion<span class="meta">ai.6v6.lab — OWASP LLM Top 10 (mock LLM)</span></a>
 </div>
 
 <h2>관리/모니터링</h2>
 <div class="grid">
-  <a class="card" href=":8000/" onclick="this.href='http://'+location.hostname+':8000/'">
+  <a class="card" href="" onclick="this.href='http://'+location.hostname+':8000/'">
     <span class="tag mgmt">관리</span>관리 포털
-    <span class="meta">:8000 — 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit</span>
+    <span class="meta">:8000 — 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Wazuh</span>
   </a>
-  <a class="card" href=":5601/" onclick="this.href='http://'+location.hostname+':5601/'">
-    <span class="tag defense">방어</span>SIEM (Wazuh lite)
-    <span class="meta">:5601 — 알림 + 룰 + agent 상태</span>
+  <a class="card" href="" onclick="this.href='http://'+location.hostname+':5601/'">
+    <span class="tag defense">방어</span>SIEM (Wazuh)
+    <span class="meta">:5601 — agent + syslog 통합 알림 viewer</span>
   </a>
-  <a class="card" href=":9100/health" onclick="this.href='http://'+location.hostname+':9100/health'">
+  <a class="card" href="" onclick="this.href='http://'+location.hostname+':9100/health'">
     <span class="tag mgmt">관리</span>Bastion API
-    <span class="meta">:9100/health — 점프 호스트 헬스 체크</span>
+    <span class="meta">:9100/health — 점프 호스트 헬스</span>
   </a>
 </div>
 
+<h2>로그 통합 — Wazuh agent + syslog 두 패러다임</h2>
+<table>
+<tr><th>Source 컨테이너</th><th>방식</th><th>로그 종류</th><th>전송 경로</th></tr>
+<tr><td>secu</td><td>Wazuh agent</td><td>Suricata eve.json + syslog</td><td>secu:agent → siem:1514/tcp</td></tr>
+<tr><td>web</td><td>Wazuh agent</td><td>Apache access/error/modsec_audit.log</td><td>web:agent → siem:1514/tcp</td></tr>
+<tr><td>bastion</td><td>rsyslog forward</td><td>sshd auth.log + system</td><td>bastion → siem:514/udp</td></tr>
+<tr><td>attacker</td><td>rsyslog forward</td><td>shell history + system</td><td>attacker → siem:514/udp</td></tr>
+</table>
+<p class="muted"><strong>학습 포인트</strong>: Wazuh agent 는 자체 binary 가 로그 수집 + 디코딩 + 알림 관리자에게 보낸다 (TCP/1514, 암호화).
+syslog forward 는 rsyslog 가 모든 로그를 그대로 UDP/514 로 전달하고, manager 가 직접 디코딩한다.
+agent = 정밀 + 보안적으로 우수, syslog = 단순 + 표준 호환.</p>
+
 <h2>학생 PC SSH 접속 (Bastion ProxyJump)</h2>
-<p>학생 PC <code>~/.ssh/config</code> 에 한 번 추가:</p>
 <pre><code>Host 6v6-bastion
   HostName &lt;VM_IP&gt;
   Port 2204
@@ -79,53 +97,25 @@ Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
   ProxyJump 6v6-bastion
   User ccc</code></pre>
 
-<p>그 후:</p>
-<pre><code>ssh 6v6-bastion        # 점프 호스트 직접
-ssh 6v6-attacker       # attacker (직접, 별도 포트)
-ssh 6v6-secu           # bastion 경유 자동
-ssh 6v6-web            # bastion 경유 자동
-ssh 6v6-siem           # bastion 경유 자동</code></pre>
+<p class="muted">기본 SSH 비밀번호: <code>ccc</code> · Bastion API 키: <code>ccc-api-key-2026</code></p>
 
-<p class="muted">기본 SSH 비밀번호: <code>ccc</code> &nbsp;·&nbsp; Bastion API 키: <code>ccc-api-key-2026</code></p>
-
-<h2>네트워크 구성</h2>
+<h2>네트워크 구성 (단일 bridge 10.20.30.0/24)</h2>
 <table>
 <tr><th>컨테이너</th><th>IP</th><th>역할</th><th>외부 포트</th></tr>
-<tr><td>6v6-bastion</td><td>10.20.30.201</td><td>SSH 점프 + Bastion API</td><td>2204, 9100</td></tr>
-<tr><td>6v6-secu</td><td>10.20.30.1</td><td>nftables + Suricata IDS</td><td>—</td></tr>
-<tr><td>6v6-web</td><td>10.20.30.80</td><td>Apache + ModSecurity + 랜딩</td><td>80, 443</td></tr>
-<tr><td>6v6-juiceshop</td><td>10.20.30.81</td><td>OWASP Juice Shop (web reverse proxy 만)</td><td>—</td></tr>
-<tr><td>6v6-siem</td><td>10.20.30.100</td><td>Wazuh manager + cti-collector</td><td>5601</td></tr>
-<tr><td>6v6-attacker</td><td>10.20.30.202</td><td>nmap, hydra, sqlmap, msfconsole</td><td>2202</td></tr>
-<tr><td>6v6-portal</td><td>10.20.30.50</td><td>관리 대시보드 (FastAPI + HTMX)</td><td>8000</td></tr>
+<tr><td>6v6-bastion</td><td>10.20.30.201</td><td>SSH 점프 + Bastion API + rsyslog forward</td><td>2204, 9100</td></tr>
+<tr><td>6v6-secu</td><td>10.20.30.1</td><td>nftables + Suricata + Wazuh agent</td><td>—</td></tr>
+<tr><td>6v6-web</td><td>10.20.30.80</td><td>Apache + ModSec + 7 vhost + Wazuh agent</td><td>80, 443</td></tr>
+<tr><td>6v6-juiceshop</td><td>10.20.30.81</td><td>OWASP Juice Shop</td><td>—</td></tr>
+<tr><td>6v6-dvwa</td><td>10.20.30.82</td><td>DVWA</td><td>—</td></tr>
+<tr><td>6v6-neobank</td><td>10.20.30.83</td><td>NeoBank (Flask)</td><td>—</td></tr>
+<tr><td>6v6-govportal</td><td>10.20.30.84</td><td>GovPortal (Flask)</td><td>—</td></tr>
+<tr><td>6v6-mediforum</td><td>10.20.30.85</td><td>MediForum (Flask)</td><td>—</td></tr>
+<tr><td>6v6-adminconsole</td><td>10.20.30.86</td><td>AdminConsole (Flask)</td><td>—</td></tr>
+<tr><td>6v6-aicompanion</td><td>10.20.30.87</td><td>AICompanion (Flask + LLM)</td><td>—</td></tr>
+<tr><td>6v6-siem</td><td>10.20.30.100</td><td>Wazuh manager + alert viewer + cti-collector</td><td>5601</td></tr>
+<tr><td>6v6-attacker</td><td>10.20.30.202</td><td>nmap, hydra, sqlmap, nikto</td><td>2202</td></tr>
+<tr><td>6v6-portal</td><td>10.20.30.50</td><td>관리 대시보드</td><td>8000</td></tr>
 </table>
-
-<h2>트래픽 흐름</h2>
-<pre>
-  attacker (10.20.30.202)
-       │
-       ▼  HTTP/HTTPS
-  ┌────────────┐
-  │   secu     │  10.20.30.1   ← nftables + Suricata sniff
-  │ (gateway)  │
-  └─────┬──────┘
-        │
-        ▼  reverse proxy
-  ┌────────────┐
-  │    web     │  10.20.30.80  ← Apache + ModSecurity (CRS)
-  │  (랜딩+WAF) │
-  └─────┬──────┘
-        │  /juice/ → http://juiceshop:3000/
-        ▼
-  ┌────────────┐
-  │ juiceshop  │  10.20.30.81 (외부 노출 X)
-  └────────────┘
-
-  ┌────────────┐    ┌──────────┐    ┌──────────┐
-  │  bastion   │    │   siem   │    │  portal  │
-  │ (점프호스트) │    │  (Wazuh) │    │ (관리UI) │
-  └────────────┘    └──────────┘    └──────────┘
-</pre>
 
 <p class="muted" style="margin-top:3em;border-top:1px solid var(--border);padding-top:1em">
 6v6 — CCC 단일 VM Docker 버전 · <a href="https://github.com/mrgrit/6v6">github.com/mrgrit/6v6</a>

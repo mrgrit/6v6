@@ -3,15 +3,15 @@ set -e
 
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
+SIEM_HOST="${SIEM_HOST:-siem}"
 
-# 사용자 생성 (이미 있으면 skip)
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$SSH_USER"
     echo "${SSH_USER}:${SSH_PASS}" | chpasswd
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
-# ~/.ssh/config 자동 생성 — ProxyJump alias
+# ~/.ssh/config — ProxyJump alias
 mkdir -p /home/$SSH_USER/.ssh
 cat > /home/$SSH_USER/.ssh/config <<SSHCFG
 Host 6v6-secu secu
@@ -47,28 +47,36 @@ SSHCFG
 chmod 600 /home/$SSH_USER/.ssh/config
 chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
 
-# 로그인 배너
 cat > /etc/motd <<MOTD
 ========================================================
   6v6 Bastion — CCC 인프라 단일 진입점
 ========================================================
-사용 가능한 ProxyJump alias:
-  ssh secu       (10.20.30.1)
-  ssh web        (10.20.30.80)
-  ssh siem       (10.20.30.100)
-  ssh attacker   (10.20.30.202)
-  ssh portal     (10.20.30.50)
-
-API:  http://localhost:9100/health
+ProxyJump alias: ssh secu | ssh web | ssh siem | ssh attacker
+API: http://localhost:9100/health
+모든 SSH 진입은 syslog 로 SIEM($SIEM_HOST) 에 forward 됨
 ========================================================
 MOTD
 
-# Bastion API 백그라운드 기동
+# ─── rsyslog forward 설정 (syslog 패러다임) ────────────────
+# 모든 sshd auth + system 로그를 SIEM 의 514/udp 로 전송 (Wazuh manager 가 수신)
+echo "[bastion] configuring rsyslog forward → $SIEM_HOST:514/udp"
+cat > /etc/rsyslog.d/50-forward-siem.conf <<RSYSLOG
+# 6v6: bastion → siem syslog forward (syslog 패러다임 — agent 와 대조)
+*.*  @${SIEM_HOST}:514
+RSYSLOG
+
+# auth.log 가 보존되도록 imfile 활성화 (sshd 가 stderr 로 쓰고 syslog 로 가는 흐름)
+service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
+
+# Bastion API 백그라운드
 echo "[bastion] starting API on :9100"
 cd /opt/bastion-api && \
     python3 -m uvicorn api:app --host 0.0.0.0 --port 9100 \
         > /var/log/bastion-api.log 2>&1 &
 
-# sshd foreground
+# sshd — auth event 가 syslog 로 가게 LogLevel 설정
+sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
+sed -i 's|^#LogLevel.*|LogLevel INFO|' /etc/ssh/sshd_config
+
 echo "[bastion] starting sshd"
 exec /usr/sbin/sshd -D -e

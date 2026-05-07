@@ -1,13 +1,14 @@
 name: 6v6
 
 # ─────────────────────────────────────────────────────────────
-# 6v6 — CCC 4-노드 인프라의 단일 docker-compose 버전 + 랜딩 + 포털.
-# 단일 bridge network 10.20.30.0/24 — 강의 자료의 IP 스킴 그대로.
+# 6v6 — CCC 인프라의 단일 docker-compose 버전.
+# 단일 bridge network 10.20.30.0/24 — 강의 자료 IP 스킴 그대로.
+# 7 취약 웹 + Wazuh 통합 (agent + syslog 두 패러다임).
 # ─────────────────────────────────────────────────────────────
 
 services:
 
-  # ─── bastion: SSH 점프 + Bastion API ────────────────────────
+  # ─── bastion: SSH 점프 + Bastion API + rsyslog forwarder ──
   bastion:
     container_name: 6v6-bastion
     build:
@@ -25,12 +26,13 @@ services:
       SSH_PASS: ${SSH_PASS:-ccc}
       API_KEY: ${API_KEY:-ccc-api-key-2026}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
+      SIEM_HOST: siem
     volumes:
       - bastion-data:/var/lib/bastion
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
-  # ─── secu: nftables + Suricata IDS ──────────────────────────
+  # ─── secu: nftables + Suricata + Wazuh agent ───────────────
   secu:
     container_name: 6v6-secu
     build:
@@ -48,11 +50,14 @@ services:
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
+      WAZUH_MANAGER: siem
     volumes:
       - secu-suricata-logs:/var/log/suricata
+    depends_on:
+      - siem
     restart: unless-stopped
 
-  # ─── web: Apache + ModSecurity + 랜딩 + JuiceShop reverse proxy ──
+  # ─── web: Apache + ModSec + 랜딩 + 7 vuln reverse proxy + Wazuh agent ──
   web:
     container_name: 6v6-web
     build:
@@ -68,13 +73,21 @@ services:
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
+      WAZUH_MANAGER: siem
     volumes:
       - web-apache-logs:/var/log/apache2
     depends_on:
+      - siem
       - juiceshop
+      - dvwa
+      - neobank
+      - govportal
+      - mediforum
+      - adminconsole
+      - aicompanion
     restart: unless-stopped
 
-  # ─── juiceshop: 취약 웹 백엔드 (web 만 접근) ─────────────
+  # ─── 취약 웹 7개 (web 의 reverse proxy 만 접근, 외부 노출 X) ──
   juiceshop:
     container_name: 6v6-juiceshop
     image: bkimminich/juice-shop:latest
@@ -82,10 +95,81 @@ services:
     networks:
       6v6-net:
         ipv4_address: 10.20.30.81
-    # 외부 포트 노출 X — 모든 트래픽이 web 의 Apache + ModSecurity 통과
     restart: unless-stopped
 
-  # ─── siem: Wazuh manager + simple alert viewer + cti-collector ─
+  dvwa:
+    container_name: 6v6-dvwa
+    image: vulnerables/web-dvwa:latest
+    hostname: dvwa
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.82
+    restart: unless-stopped
+
+  neobank:
+    container_name: 6v6-neobank
+    build:
+      context: ./vuln-sites/neobank
+    hostname: neobank
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.83
+    environment:
+      PORT: 3001
+    restart: unless-stopped
+
+  govportal:
+    container_name: 6v6-govportal
+    build:
+      context: ./vuln-sites/govportal
+    hostname: govportal
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.84
+    environment:
+      PORT: 3002
+    restart: unless-stopped
+
+  mediforum:
+    container_name: 6v6-mediforum
+    build:
+      context: ./vuln-sites/mediforum
+    hostname: mediforum
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.85
+    environment:
+      PORT: 3003
+    restart: unless-stopped
+
+  adminconsole:
+    container_name: 6v6-adminconsole
+    build:
+      context: ./vuln-sites/adminconsole
+    hostname: adminconsole
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.86
+    environment:
+      PORT: 3004
+    restart: unless-stopped
+
+  aicompanion:
+    container_name: 6v6-aicompanion
+    build:
+      context: ./vuln-sites/aicompanion
+    hostname: aicompanion
+    networks:
+      6v6-net:
+        ipv4_address: 10.20.30.87
+    environment:
+      PORT: 3005
+      LLM_BACKEND: ${AICOMPANION_LLM_BACKEND:-mock}
+      OLLAMA_URL: ${LLM_BASE_URL:-}
+      OLLAMA_MODEL: ${LLM_MODEL:-gemma3:4b}
+    restart: unless-stopped
+
+  # ─── siem: Wazuh manager (agent + syslog 둘 다 입력) + viewer ──
   siem:
     container_name: 6v6-siem
     build:
@@ -105,7 +189,7 @@ services:
       - siem-wazuh:/var/ossec
     restart: unless-stopped
 
-  # ─── attacker: pentest 도구 (nmap/hydra/sqlmap/nikto/msf) ──
+  # ─── attacker: pentest 도구 + rsyslog forwarder ────────────
   attacker:
     container_name: 6v6-attacker
     build:
@@ -120,11 +204,14 @@ services:
     environment:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
+      SIEM_HOST: siem
     volumes:
       - attacker-home:/home/ccc
+    depends_on:
+      - siem
     restart: unless-stopped
 
-  # ─── portal: 관리 대시보드 (FastAPI + Jinja2 + HTMX) ───────
+  # ─── portal: 관리 대시보드 ───────────────────────────────
   portal:
     container_name: 6v6-portal
     build:
@@ -142,6 +229,7 @@ services:
       - web-apache-logs:/data/apache-logs:ro
       - bastion-data:/data/bastion-data:ro
       - siem-data:/data/siem-data:ro
+      - siem-wazuh:/data/wazuh:ro
     environment:
       BASTION_API_URL: http://bastion:9100
       BASTION_API_KEY: ${API_KEY:-ccc-api-key-2026}

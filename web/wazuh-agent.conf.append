@@ -1,0 +1,26 @@
+  <!-- 6v6: Apache + ModSecurity 로그 (agent 패러다임 학습) -->
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/access.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/error.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/apache2/modsec_audit.log</location>
+  </localfile>
+
+  <!-- vhost 별 access.log 수집 -->
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/landing_access.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/juice_access.log</location>
+  </localfile>

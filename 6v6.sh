@@ -92,20 +92,61 @@ cmd_smoke() {
     echo "[6v6] smoke test (VM_IP=$IP)"
     echo "─── 외부 노출 포트 ─────────────────────────────────────────"
     check_url "landing"          "http://$IP/"
-    check_url "juiceshop (proxy)" "http://$IP/juice/"
     check_url "portal"           "http://$IP:8000/"
     check_url "portal /health"   "http://$IP:8000/health"
     check_url "siem"             "http://$IP:5601/"
     check_url "bastion API"      "http://$IP:9100/health"
     echo
+    echo "─── vhost reverse proxy (Host 헤더로 검증) ────────────────"
+    for h in juice dvwa neobank govportal mediforum admin ai; do
+        local code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' \
+            -H "Host: $h.6v6.lab" "http://$IP/" 2>/dev/null || echo 000)
+        if [[ "$code" =~ ^(200|301|302|307|308|401|403)$ ]]; then
+            printf "  [OK]  %-22s HTTP %s\n" "$h.6v6.lab" "$code"
+        else
+            printf "  [FAIL] %-22s HTTP %s\n" "$h.6v6.lab" "$code"
+        fi
+    done
+    echo
     echo "─── 컨테이너 헬스 ─────────────────────────────────────────"
-    for c in 6v6-bastion 6v6-secu 6v6-web 6v6-juiceshop 6v6-siem 6v6-attacker 6v6-portal; do
+    for c in 6v6-bastion 6v6-secu 6v6-web 6v6-juiceshop 6v6-dvwa 6v6-neobank 6v6-govportal 6v6-mediforum 6v6-adminconsole 6v6-aicompanion 6v6-siem 6v6-attacker 6v6-portal; do
         if docker ps --format '{{.Names}}' | grep -q "^$c$"; then
             printf "  [OK]  %-15s %s\n" "$c" "$(docker ps --format '{{.Status}}' --filter name=^$c$)"
         else
             printf "  [FAIL] %-15s 컨테이너 미동작\n" "$c"
         fi
     done
+    echo
+    echo "─── Wazuh 동작 검증 ───────────────────────────────────────"
+    if docker ps --format '{{.Names}}' | grep -q '^6v6-siem$'; then
+        # manager 8 daemon
+        local running=$(docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null \
+                        | grep -c 'is running' || echo 0)
+        local total=$(docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null \
+                      | grep -cE 'is running|not running' || echo 0)
+        if [ "$running" -ge 6 ]; then
+            printf "  [OK]  wazuh-manager daemon  %s/%s running\n" "$running" "$total"
+        else
+            printf "  [WARN] wazuh-manager daemon %s/%s running\n" "$running" "$total"
+        fi
+        # 등록된 agent
+        local agents=$(docker exec 6v6-siem /var/ossec/bin/agent_control -l 2>/dev/null \
+                       | grep -cE '^\s+ID:' || echo 0)
+        if [ "$agents" -ge 2 ]; then
+            printf "  [OK]  Wazuh agent 등록      %s 개 (secu/web 등)\n" "$agents"
+        else
+            printf "  [WARN] Wazuh agent 등록     %s 개 (목표 2+) — agent-auth 결과 확인\n" "$agents"
+        fi
+        # alerts.json 갱신
+        if docker exec 6v6-siem test -s /var/ossec/logs/alerts/alerts.json 2>/dev/null; then
+            local alines=$(docker exec 6v6-siem wc -l /var/ossec/logs/alerts/alerts.json 2>/dev/null | awk '{print $1}')
+            printf "  [OK]  alerts.json           %s 라인\n" "$alines"
+        else
+            printf "  [INFO] alerts.json 비었음   — attacker 에서 SQLi 등 발사 후 재확인\n"
+        fi
+    else
+        echo "  [FAIL] siem 컨테이너 미동작"
+    fi
     echo
     echo "─── SSH 점프 검증 ──────────────────────────────────────────"
     local ssh_opt='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 -o BatchMode=yes'
