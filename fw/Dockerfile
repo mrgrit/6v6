@@ -19,7 +19,7 @@ RUN curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
     echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
         > /etc/apt/sources.list.d/wazuh.list && \
     apt-get update && \
-    WAZUH_MANAGER="10.20.32.100" apt-get install -y --no-install-recommends wazuh-agent && \
+    WAZUH_MANAGER="10.20.32.100" apt-get install -y --no-install-recommends wazuh-agent=4.10.1-1 && \
     rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /run/sshd && \
