@@ -313,10 +313,12 @@ networks:
         - subnet: 10.20.30.0/24
           gateway: 10.20.30.254
 
+  # internal:true 는 host iptables 에 cross-bridge drop 룰을 추가해서 ips 의
+  # 인터-브릿지 forwarding 을 차단함. 체이닝은 default route 로 강제 (fw/ips
+  # 가 ext->dmz->int 경로의 hop). 컨테이너 outbound 는 docker NAT 로 허용.
   pipe:
     name: 6v6-pipe
     driver: bridge
-    internal: true
     ipam:
       config:
         - subnet: 10.20.31.0/24
@@ -325,7 +327,6 @@ networks:
   dmz:
     name: 6v6-dmz
     driver: bridge
-    internal: true
     ipam:
       config:
         - subnet: 10.20.32.0/24
@@ -334,7 +335,6 @@ networks:
   int:
     name: 6v6-int
     driver: bridge
-    internal: true
     ipam:
       config:
         - subnet: 10.20.40.0/24
