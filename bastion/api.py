@@ -37,15 +37,15 @@ def health() -> dict:
 
 @app.get("/targets")
 def targets(x_api_key: str | None = Header(default=None)) -> dict:
-    """6v6 환경의 컨테이너 alias 목록."""
+    """List of 6v6 container aliases."""
     _check_api_key(x_api_key)
     return {
         "targets": [
             {"name": "secu",     "ip": "10.20.30.1",   "role": "nftables + Suricata"},
             {"name": "web",      "ip": "10.20.30.80",  "role": "Apache + ModSec + JuiceShop reverse proxy"},
             {"name": "siem",     "ip": "10.20.30.100", "role": "Wazuh manager + alert viewer"},
-            {"name": "attacker", "ip": "10.20.30.202", "role": "pentest 도구"},
-            {"name": "portal",   "ip": "10.20.30.50",  "role": "관리 대시보드"},
+            {"name": "attacker", "ip": "10.20.30.202", "role": "pentest tools"},
+            {"name": "portal",   "ip": "10.20.30.50",  "role": "admin portal"},
         ]
     }
 
@@ -75,14 +75,14 @@ def exec_command(req: CommandRequest, x_api_key: str | None = Header(default=Non
 
 @app.get("/skills")
 def skills(x_api_key: str | None = Header(default=None)) -> dict:
-    """정적 skill 카탈로그 (placeholder — full bastion 에서 동적 catalog)."""
+    """Static skill catalog (placeholder for full Bastion dynamic catalog)."""
     _check_api_key(x_api_key)
     return {
         "skills": [
-            {"id": "nft.list_ruleset",  "target": "secu", "desc": "nftables ruleset 조회"},
-            {"id": "suricata.tail_eve", "target": "secu", "desc": "최근 IDS alert 출력"},
-            {"id": "apache.error_log",  "target": "web",  "desc": "ModSecurity error.log tail"},
-            {"id": "wazuh.alerts",      "target": "siem", "desc": "Wazuh alerts.json tail"},
-            {"id": "attacker.nmap",     "target": "attacker", "desc": "nmap 포트 스캔"},
+            {"id": "nft.list_ruleset",  "target": "secu", "desc": "list nftables ruleset"},
+            {"id": "suricata.tail_eve", "target": "secu", "desc": "tail recent IDS alerts"},
+            {"id": "apache.error_log",  "target": "web",  "desc": "tail ModSecurity error.log"},
+            {"id": "wazuh.alerts",      "target": "siem", "desc": "tail Wazuh alerts.json"},
+            {"id": "attacker.nmap",     "target": "attacker", "desc": "nmap port scan"},
         ]
     }

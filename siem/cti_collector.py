@@ -17,10 +17,10 @@ OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
 # 학교 환경의 외부망 정책에 따라 실제 fetch 대신 정적 샘플 IOC 사용 (학습 목적).
 SAMPLE_IOCS = {
     "abuse_ip": [
-        {"ip": "185.220.101.4",  "category": "tor-exit",     "first_seen": "2025-12-01"},
-        {"ip": "45.227.255.4",   "category": "scanner",       "first_seen": "2026-01-12"},
-        {"ip": "192.42.116.16",  "category": "tor-exit",      "first_seen": "2025-11-08"},
-        {"ip": "62.102.148.69",  "category": "malware-c2",    "first_seen": "2026-02-22"},
+        {"ip": "185.220.101.4",  "category": "tor-exit",   "first_seen": "2025-12-01"},
+        {"ip": "45.227.255.4",   "category": "scanner",    "first_seen": "2026-01-12"},
+        {"ip": "192.42.116.16",  "category": "tor-exit",   "first_seen": "2025-11-08"},
+        {"ip": "62.102.148.69",  "category": "malware-c2", "first_seen": "2026-02-22"},
     ],
     "malware_hash": [
         {"sha256": "9d4b8e2a8f...", "family": "Emotet"},
@@ -36,7 +36,7 @@ SAMPLE_IOCS = {
 def write_iocs() -> dict:
     payload = {
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "source": "6v6-static-sample (학습용)",
+        "source": "6v6-static-sample (educational)",
         "iocs": SAMPLE_IOCS,
         "counts": {
             "abuse_ip": len(SAMPLE_IOCS["abuse_ip"]),

@@ -11,7 +11,7 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
-# ~/.ssh/config — ProxyJump alias
+# ~/.ssh/config — ProxyJump aliases
 mkdir -p /home/$SSH_USER/.ssh
 cat > /home/$SSH_USER/.ssh/config <<SSHCFG
 Host 6v6-secu secu
@@ -49,32 +49,29 @@ chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
 
 cat > /etc/motd <<MOTD
 ========================================================
-  6v6 Bastion — CCC 인프라 단일 진입점
+  6v6 Bastion - single entry point for the lab
 ========================================================
-ProxyJump alias: ssh secu | ssh web | ssh siem | ssh attacker
+ProxyJump aliases: ssh secu | ssh web | ssh siem | ssh attacker
 API: http://localhost:9100/health
-모든 SSH 진입은 syslog 로 SIEM($SIEM_HOST) 에 forward 됨
+All SSH events forwarded via syslog to SIEM ($SIEM_HOST).
 ========================================================
 MOTD
 
-# ─── rsyslog forward 설정 (syslog 패러다임) ────────────────
-# 모든 sshd auth + system 로그를 SIEM 의 514/udp 로 전송 (Wazuh manager 가 수신)
-echo "[bastion] configuring rsyslog forward → $SIEM_HOST:514/udp"
+# rsyslog forward (syslog paradigm) - bastion auth/system -> siem:514/udp
+echo "[bastion] configuring rsyslog forward -> $SIEM_HOST:514/udp"
 cat > /etc/rsyslog.d/50-forward-siem.conf <<RSYSLOG
-# 6v6: bastion → siem syslog forward (syslog 패러다임 — agent 와 대조)
+# 6v6: bastion -> siem syslog forward (syslog paradigm vs Wazuh agent)
 *.*  @${SIEM_HOST}:514
 RSYSLOG
 
-# auth.log 가 보존되도록 imfile 활성화 (sshd 가 stderr 로 쓰고 syslog 로 가는 흐름)
 service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
 
-# Bastion API 백그라운드
-echo "[bastion] starting API on :9100"
+echo "[bastion] starting Bastion API on :9100"
 cd /opt/bastion-api && \
     python3 -m uvicorn api:app --host 0.0.0.0 --port 9100 \
         > /var/log/bastion-api.log 2>&1 &
 
-# sshd — auth event 가 syslog 로 가게 LogLevel 설정
+# sshd auth events -> syslog
 sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
 sed -i 's|^#LogLevel.*|LogLevel INFO|' /etc/ssh/sshd_config
 

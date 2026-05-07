@@ -14,15 +14,13 @@ fi
 sed -i 's|^#PrintMotd.*|PrintMotd yes|' /etc/ssh/sshd_config
 echo "cat /etc/motd 2>/dev/null" >> /home/$SSH_USER/.bashrc
 
-# rsyslog forward — attacker 활동 로그도 SIEM 에 (syslog 패러다임 학습)
-echo "[attacker] configuring rsyslog forward → $SIEM_HOST:514/udp"
+echo "[attacker] configuring rsyslog forward -> $SIEM_HOST:514/udp"
 cat > /etc/rsyslog.d/50-forward-siem.conf <<RSYSLOG
-# 6v6: attacker → siem syslog forward
+# 6v6: attacker -> siem syslog forward (syslog paradigm vs Wazuh agent)
 *.*  @${SIEM_HOST}:514
 RSYSLOG
 service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
 
-# sshd 의 auth event 도 syslog 로
 sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
 sed -i 's|^#LogLevel.*|LogLevel INFO|' /etc/ssh/sshd_config
 

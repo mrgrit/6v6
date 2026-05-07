@@ -1,22 +1,22 @@
 ========================================================
-  6v6 Attacker — pentest 학습 콘솔
+  6v6 Attacker - pentest learning console
 ========================================================
 
-설치된 도구 (전수 — `which <tool>` 로 경로 확인):
-  nmap       포트 스캔, 서비스 탐지
-  hydra      비밀번호 무차별 대입
-  sqlmap     SQL Injection 자동화
-  nikto      웹 취약점 스캐너
-  ncat       범용 TCP/UDP 클라이언트
-  pwntools   exploit 개발 (Python)
+Installed tools (verify with `which <tool>`):
+  nmap       port scan, service detection
+  hydra      password brute-force
+  sqlmap     SQL injection automation
+  nikto      web vulnerability scanner
+  ncat       general TCP/UDP client
+  pwntools   exploit dev (Python)
 
-대상 (단일 bridge 10.20.30.0/24):
+Targets (single bridge 10.20.30.0/24):
   10.20.30.1     secu     (gateway, nftables + Suricata)
-  10.20.30.80    web      (Apache + ModSec, /juice/ → Juice Shop)
+  10.20.30.80    web      (Apache + ModSec, /juice/ -> Juice Shop)
   10.20.30.100   siem     (Wazuh manager + alert viewer :5601)
-  10.20.30.50    portal   (관리 대시보드 :8000)
+  10.20.30.50    portal   (admin dashboard :8000)
 
-학습 시작:
+Quick start:
   nmap -sT -p 22,80,443,3000,5601,8000 10.20.30.80
   curl -A 'sqlmap/1.7' http://10.20.30.80/juice/
   hydra -l admin -P /usr/share/wordlists/rockyou.txt 10.20.30.80 http-post-form ...
