@@ -126,6 +126,19 @@ cmd_check_kernel() {
             echo "         echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf"
         fi
     fi
+
+    # bridge-nf-call=0 — required for inter-bridge forwarding (fw->ips->web).
+    # When br_netfilter is loaded with bridge-nf-call=1, host iptables FORWARD
+    # processes packets traversing docker bridges, and docker's per-IP DROP
+    # rules block our 4-tier chain.
+    if sudo -n true 2>/dev/null; then
+        sudo modprobe br_netfilter 2>/dev/null || true
+        if [ -f /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
+            sudo sysctl -w net.bridge.bridge-nf-call-iptables=0 >/dev/null 2>&1
+            grep -q 'bridge-nf-call-iptables' /etc/sysctl.conf 2>/dev/null || \
+                echo 'net.bridge.bridge-nf-call-iptables=0' | sudo tee -a /etc/sysctl.conf >/dev/null
+        fi
+    fi
 }
 
 cmd_setup_forward() {
