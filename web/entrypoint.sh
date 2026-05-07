@@ -3,7 +3,11 @@ set -e
 
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
-WAZUH_MANAGER="${WAZUH_MANAGER:-siem}"
+WAZUH_MANAGER="${WAZUH_MANAGER:-10.20.30.100}"
+if [[ ! "$WAZUH_MANAGER" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    RES_IP=$(getent hosts "$WAZUH_MANAGER" 2>/dev/null | awk '{print $1}' | head -1)
+    [ -n "$RES_IP" ] && WAZUH_MANAGER="$RES_IP" || WAZUH_MANAGER="10.20.30.100"
+fi
 
 # 사용자
 if ! id "$SSH_USER" >/dev/null 2>&1; then

@@ -10,23 +10,38 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
-# ─── Wazuh manager 설정 — agent + syslog 두 입력 ────────────
-if [ -d /var/ossec ]; then
-    echo "[siem] configuring Wazuh manager (agent + syslog inputs)"
+# ─── Wazuh manager 설정 — 첫 부팅 시 한 번만 patch (idempotent) ────────────
+PATCH_FLAG=/var/ossec/.6v6-patched
+if [ -d /var/ossec ] && [ ! -f "$PATCH_FLAG" ]; then
+    echo "[siem] patching wazuh ossec.conf (first boot only)"
 
-    # 1) authd 활성화 — agent 자동 등록 허용 (인증서 자동 생성)
-    sed -i 's|<auth>|<auth>\n    <use_password>no</use_password>|' /var/ossec/etc/ossec.conf 2>/dev/null || true
-    sed -i 's|<disabled>yes</disabled>|<disabled>no</disabled>|' /var/ossec/etc/ossec.conf 2>/dev/null || true
+    # 1) authd 강제 enable (auth 블록 안의 disabled 만 yes→no)
+    python3 <<'PY'
+import re
+p = '/var/ossec/etc/ossec.conf'
+src = open(p).read()
+# auth 블록 안의 disabled 토글
+src = re.sub(
+    r'(<auth>.*?<disabled>)yes(</disabled>.*?</auth>)',
+    r'\1no\2', src, flags=re.S
+)
+# syslog remote 블록이 없으면 </ossec_config> 직전에 한 번만 삽입
+if '<connection>syslog</connection>' not in src:
+    block = (
+        '\n  <!-- 6v6: rsyslog forward 수신 (syslog 패러다임 학습) -->\n'
+        '  <remote>\n'
+        '    <connection>syslog</connection>\n'
+        '    <port>514</port>\n'
+        '    <protocol>udp</protocol>\n'
+        '    <allowed-ips>10.20.30.0/24</allowed-ips>\n'
+        '  </remote>\n'
+    )
+    src = src.replace('</ossec_config>', block + '</ossec_config>', 1)
+open(p, 'w').write(src)
+print('[siem]   ossec.conf patched OK')
+PY
 
-    # 2) syslog 입력 추가 — bastion / attacker 의 rsyslog forward 수신
-    if ! grep -q '<connection>syslog</connection>' /var/ossec/etc/ossec.conf; then
-        sed -i '/<\/ossec_config>/i\
-  <!-- 6v6: rsyslog forward 수신 (syslog 패러다임 학습) -->\n  <remote>\n    <connection>syslog</connection>\n    <port>514</port>\n    <protocol>udp</protocol>\n    <allowed-ips>10.20.30.0/24</allowed-ips>\n  </remote>' /var/ossec/etc/ossec.conf
-    fi
-
-    # 3) agent 입력 — 기본 1514/udp+tcp 활성화 (Wazuh 기본값)
-
-    # 4) authd 데몬용 ossec-authd 인증서 생성 (없으면)
+    # 2) authd 인증서 (없으면 생성)
     if [ ! -f /var/ossec/etc/sslmanager.cert ]; then
         echo "[siem]   generating authd cert"
         cd /var/ossec/etc && \
@@ -37,12 +52,17 @@ if [ -d /var/ossec ]; then
         cd - > /dev/null
     fi
 
+    touch "$PATCH_FLAG"
+fi
+
+# Wazuh manager 기동
+if [ -d /var/ossec ]; then
     echo "[siem] starting wazuh-manager"
     /var/ossec/bin/wazuh-control start 2>&1 | sed 's/^/  /' || \
         echo "[siem] WARN: wazuh-control 기동 실패"
 fi
 
-# rsyslog (학습 alt 입력)
+# rsyslog (학습 alt 입력 — Wazuh manager 가 514 listen 이므로 별도 미사용)
 echo "[siem] starting rsyslog"
 service rsyslog start 2>/dev/null || true
 

@@ -3,7 +3,13 @@ set -e
 
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
-WAZUH_MANAGER="${WAZUH_MANAGER:-siem}"
+# DNS 해석 실패 대비 — siem 의 고정 IP 직접 사용 (docker compose 의 ipv4_address 와 일치)
+WAZUH_MANAGER="${WAZUH_MANAGER:-10.20.30.100}"
+# hostname 형태로 전달됐으면 IP 로 변환 시도, 실패시 IP fallback
+if [[ ! "$WAZUH_MANAGER" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    RES_IP=$(getent hosts "$WAZUH_MANAGER" 2>/dev/null | awk '{print $1}' | head -1)
+    [ -n "$RES_IP" ] && WAZUH_MANAGER="$RES_IP" || WAZUH_MANAGER="10.20.30.100"
+fi
 
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$SSH_USER"
