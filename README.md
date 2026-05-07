@@ -41,16 +41,36 @@ bastion + attacker 는 **syslog 패러다임** (rsyslog 가 raw forward, manager
 | 최소 | 4 vCPU | 6 GB | 30 GB | 취약 웹 7 + Wazuh manager |
 | 권장 | 4 vCPU | 8 GB | 40 GB | + attacker 풀 도구 |
 
-## 빠른 시작
+## 빠른 시작 (리눅스만 설치된 새 VM 기준)
 
 ```bash
 git clone https://github.com/mrgrit/6v6
 cd 6v6
-cp .env.example .env       # LLM_BASE_URL 만 옵션 (aicompanion mock 으로 동작 가능)
-bash 6v6.sh up             # 첫 빌드 8~12분 (이미지 다수 + Wazuh)
-bash 6v6.sh smoke          # 헬스 + Wazuh agent 등록 검증
-bash 6v6.sh status         # 외부 접속 안내
+
+# 1) Docker + 도구 자동 설치 (Ubuntu 22.04 / Debian 12)
+bash 6v6.sh install         # docker, docker compose plugin, git, jq, sshpass, dnsutils
+                             # 'docker' 그룹에 사용자 추가 후 종료
+
+# 2) 새 터미널 열거나
+newgrp docker
+
+# 3) 환경 설정
+cp .env.example .env        # LLM_BASE_URL 만 옵션 (aicompanion 은 mock 으로 동작 가능)
+
+# 4) 기동
+bash 6v6.sh up              # 첫 빌드 8~12분 (Wazuh manager + 7 vuln 사이트 포함)
+bash 6v6.sh smoke           # 헬스 + Wazuh agent 등록 검증
+bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 ```
+
+`6v6.sh install` 이 자동 설치하는 항목:
+- Docker Engine + CLI + containerd
+- docker-buildx-plugin + docker-compose-plugin
+- git, curl, jq, sshpass, net-tools, iproute2, dnsutils, gnupg, lsb-release
+- `docker` group 에 현재 사용자 추가 (재로그인 또는 `newgrp docker` 필요)
+
+> 자동 설치는 **Debian/Ubuntu 계열만 지원**. RHEL/CentOS/Arch 등은 `docker-ce` +
+> `docker-compose-plugin` 을 각 배포판 패키지 매니저로 직접 설치 후 `bash 6v6.sh up` 사용.
 
 ## 외부 노출 포트
 
@@ -82,20 +102,40 @@ bash 6v6.sh status         # 외부 접속 안내
 | 6v6-attacker | 10.20.30.202 | nmap, hydra, sqlmap, nikto + rsyslog forward |
 | 6v6-portal | 10.20.30.50 | 관리 대시보드 (FastAPI + HTMX) |
 
-## 학생 PC 접속
+## 학생 PC 접속 — 시스템별 가이드
 
-### 브라우저 — `/etc/hosts` 에 7개 도메인 추가
+전제: VM IP 는 `bash 6v6.sh status` 로 확인. 아래 `<VM_IP>` 자리에 실제 IP 대체.
+
+### 1. 브라우저 (학생 PC)
+
+먼저 학생 PC 의 hosts 파일에 1줄 추가:
+- 윈도우: `C:\Windows\System32\drivers\etc\hosts` (관리자 권한 메모장)
+- 리눅스/맥: `/etc/hosts` (sudo)
+
 ```
-<VM_IP> 6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab
+<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab
 ```
 
-그 후:
-- `http://<VM_IP>/` — 랜딩 (모든 사이트 링크)
-- `http://juice.6v6.lab/`, `http://dvwa.6v6.lab/`, `http://neobank.6v6.lab/` … (모두 ModSec 통과)
-- `http://<VM_IP>:8000/` — 관리 포털
-- `http://<VM_IP>:5601/` — Wazuh 알림 viewer
+그 후 브라우저:
 
-### SSH (bastion ProxyJump)
+| URL | 대상 | 비고 |
+|-----|------|------|
+| `http://<VM_IP>/` | **랜딩 페이지** | 모든 사이트 링크 모음 |
+| `http://juice.6v6.lab/` | OWASP Juice Shop | 가입 자유 / `admin@juice-sh.op` 비밀번호 추측 |
+| `http://dvwa.6v6.lab/` | DVWA | `admin / password` |
+| `http://neobank.6v6.lab/` | NeoBank (가상 은행) | 30 취약점 |
+| `http://govportal.6v6.lab/` | GovPortal (가상 정부) | 25 취약점 |
+| `http://mediforum.6v6.lab/` | MediForum (가상 의료) | 게시판 + 업로드 |
+| `http://admin.6v6.lab/` | AdminConsole | RCE/XXE/SSRF/pickle |
+| `http://ai.6v6.lab/` | AICompanion | OWASP LLM Top 10 (mock LLM) |
+| `http://<VM_IP>:8000/` | **관리 포털** | 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Agent |
+| `http://<VM_IP>:5601/` | **SIEM (Wazuh lite)** | 알림 + Top rule + level 분포 (10초 자동 새로고침) |
+| `http://<VM_IP>:9100/health` | Bastion API | 헬스 체크 (X-API-Key 없이 접근 가능) |
+
+### 2. SSH (Bastion ProxyJump 모델)
+
+학생 PC `~/.ssh/config` 에 1회 등록:
+
 ```ssh-config
 Host 6v6-bastion
   HostName <VM_IP>
@@ -112,7 +152,85 @@ Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
   User ccc
 ```
 
-비밀번호: `ccc`. Bastion API key: `ccc-api-key-2026`.
+| 명령 | 대상 컨테이너 | 진입 경로 |
+|------|--------------|----------|
+| `ssh 6v6-bastion` | bastion (점프 호스트) | 직접 (port 2204) |
+| `ssh 6v6-attacker` | attacker (pentest 도구) | 직접 (port 2202, 빠른 공격 진입) |
+| `ssh 6v6-secu` | secu (nftables + Suricata) | bastion 경유 자동 |
+| `ssh 6v6-web` | web (Apache + ModSec) | bastion 경유 자동 |
+| `ssh 6v6-siem` | siem (Wazuh manager) | bastion 경유 자동 |
+| `ssh 6v6-portal` | portal (관리 대시보드) | bastion 경유 자동 |
+
+**bastion 안에 들어가서**는 alias 자동 등록되어 다음도 가능:
+```bash
+ssh secu       # 10.20.30.1
+ssh web        # 10.20.30.80
+ssh siem       # 10.20.30.100
+ssh attacker   # 10.20.30.202
+```
+
+### 3. 컨테이너 직접 (VM 호스트에서, 디버그/관리)
+
+```bash
+docker exec -it 6v6-bastion bash       # bastion API 디버그
+docker exec -it 6v6-secu bash          # nftables / Suricata 점검
+docker exec -it 6v6-web bash           # Apache / ModSec / Wazuh agent
+docker exec -it 6v6-siem bash          # Wazuh manager
+docker exec -it 6v6-attacker bash      # pentest 도구
+docker exec -it 6v6-portal bash        # FastAPI portal
+docker exec -it 6v6-juiceshop sh       # JuiceShop (Node.js, Alpine)
+docker exec -it 6v6-dvwa bash          # DVWA (PHP + MySQL)
+docker exec -it 6v6-neobank bash       # NeoBank Flask
+# (govportal / mediforum / adminconsole / aicompanion 동일 패턴)
+```
+
+### 4. 핵심 운영 명령
+
+| 명령 | 의미 |
+|------|------|
+| `bash 6v6.sh status` | 외부 접속 정보 + 컨테이너 상태 |
+| `bash 6v6.sh smoke` | 외부 노출 포트 + Wazuh agent 등록 + SSH 헬스 |
+| `bash 6v6.sh logs <svc>` | 컨테이너 로그 follow |
+| `docker exec 6v6-siem /var/ossec/bin/wazuh-control status` | Wazuh manager 8 daemon 상태 |
+| `docker exec 6v6-siem /var/ossec/bin/agent_control -l` | 등록된 agent (secu/web 보여야) |
+| `docker exec 6v6-siem tail -20 /var/ossec/logs/alerts/alerts.json` | 최근 alert |
+| `docker exec 6v6-secu sudo nft list ruleset` | secu nftables 룰 |
+| `docker exec 6v6-secu tail /var/log/suricata/eve.json` | Suricata 알림 |
+| `docker exec 6v6-web tail /var/log/apache2/modsec_audit.log` | ModSecurity 차단 로그 |
+
+### 5. 빠른 e2e 테스트 — attacker 에서 SQLi 발사 → SIEM 알림 확인
+
+```bash
+# 학생 PC 에서 attacker 진입
+ssh 6v6-attacker
+
+# 안에서:
+nmap -sT -p 22,80 web                              # 포트 스캔
+curl -A 'sqlmap/1.7' http://web/                    # WAF 차단 확인 (HTTP 403)
+curl "http://web/?q=' UNION SELECT 1,2,3--"         # SQLi (HTTP 403)
+nikto -h http://web/                                # 종합 스캐너
+
+# 발사 후 SIEM 의 alert 확인:
+exit
+ssh 6v6-siem
+sudo tail -20 /var/ossec/logs/alerts/alerts.json | jq '.rule.description, .agent.name'
+```
+
+또는 portal 에서 시각적 확인:
+- `http://<VM_IP>:8000/waf` — ModSec audit 이벤트
+- `http://<VM_IP>:8000/ids` — Suricata alert
+- `http://<VM_IP>:5601/` — Wazuh 통합 알림 (agent + syslog)
+
+### 6. 비밀번호 / 인증 정보 정리
+
+| 시스템 | 계정 |
+|--------|------|
+| 모든 컨테이너 SSH | `ccc / ccc` (`.env` 의 `SSH_USER` / `SSH_PASS`) |
+| Bastion API | header `X-API-Key: ccc-api-key-2026` |
+| Wazuh manager API (5601 lite UI 는 인증 없음) | `admin / SecretPassword` (실제 운영시 변경) |
+| DVWA | `admin / password` |
+| JuiceShop | 가입 자유, `admin@juice-sh.op` 의 비밀번호 추측 학습 |
+| NeoBank / GovPortal / MediForum / AdminConsole | seed 폴더의 vulnerabilities.md 확인 |
 
 ## Wazuh 동작 검증
 

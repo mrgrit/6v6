@@ -18,9 +18,103 @@ vm_ip() {
         | cut -d/ -f1
 }
 
+cmd_install() {
+    # 리눅스만 설치된 환경에 docker + docker compose + 보조 도구 일괄 설치 (Debian/Ubuntu).
+    if ! command -v sudo >/dev/null 2>&1; then
+        echo "[6v6] sudo 가 필요합니다 — 'apt install sudo' 후 다시 실행"
+        exit 1
+    fi
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "[6v6] 이 스크립트의 자동 설치는 Debian/Ubuntu 계열만 지원합니다."
+        echo "      RHEL/CentOS/Arch 환경은 docker engine + docker compose plugin 을"
+        echo "      각 배포판 패키지 매니저로 직접 설치 후 'bash 6v6.sh up' 사용하세요."
+        exit 1
+    fi
+
+    echo "[6v6] (1/4) 시스템 패키지 업데이트"
+    sudo apt-get update -qq
+
+    echo "[6v6] (2/4) 보조 도구 설치 (git, curl, jq, sshpass, net-tools, iproute2 ...)"
+    sudo apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg lsb-release \
+        git jq sshpass net-tools iproute2 dnsutils >/dev/null
+
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "[6v6] (3/4) Docker Engine 설치"
+        local OS_ID OS_CODE
+        OS_ID=$(. /etc/os-release && echo "$ID")
+        OS_CODE=$(. /etc/os-release && echo "$VERSION_CODENAME")
+        # ubuntu/debian 둘 다 지원
+        case "$OS_ID" in
+            ubuntu|debian) ;;
+            *) echo "[6v6] 알 수 없는 배포판: $OS_ID — Ubuntu 22.04 또는 Debian 12 권장"; exit 1 ;;
+        esac
+
+        sudo install -m 0755 -d /etc/apt/keyrings
+        sudo curl -fsSL "https://download.docker.com/linux/$OS_ID/gpg" -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$OS_ID $OS_CODE stable" | \
+            sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+            docker-ce docker-ce-cli containerd.io \
+            docker-buildx-plugin docker-compose-plugin
+
+        sudo systemctl enable --now docker
+        sudo usermod -aG docker "$USER"
+        echo "[6v6]   Docker Engine 설치 완료: $(docker --version)"
+    else
+        echo "[6v6] (3/4) Docker 이미 설치됨: $(docker --version)"
+    fi
+
+    if ! docker compose version >/dev/null 2>&1; then
+        echo "[6v6]   docker compose plugin 누락 — 추가 설치"
+        sudo apt-get install -y --no-install-recommends docker-compose-plugin
+    fi
+
+    echo "[6v6] (4/4) 설치 검증"
+    echo "  - docker:         $(docker --version 2>/dev/null || echo MISSING)"
+    echo "  - docker compose: $(docker compose version 2>/dev/null | head -1 || echo MISSING)"
+    echo "  - git:            $(git --version 2>/dev/null || echo MISSING)"
+    echo "  - jq:             $(jq --version 2>/dev/null || echo MISSING)"
+
+    if ! id -nG "$USER" 2>/dev/null | grep -qw docker; then
+        echo
+        echo "[6v6] ★ 'docker' 그룹 가입이 현재 셸에 반영되지 않았습니다."
+        echo "      → 새 터미널을 열거나, 같은 셸에서 'newgrp docker' 실행 후"
+        echo "      → 'bash 6v6.sh up' 으로 시작하세요."
+        exit 0
+    fi
+
+    echo
+    echo "[6v6] 설치 완료 — 이제 'bash 6v6.sh up' 으로 6v6 환경 기동 가능."
+}
+
+cmd_check_docker() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "[6v6] ✗ Docker 가 설치되지 않았습니다."
+        echo "      → 'bash 6v6.sh install' 로 자동 설치하거나, 수동 설치 후 다시 실행."
+        exit 1
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        echo "[6v6] ✗ Docker daemon 에 접근할 수 없습니다."
+        echo "      → sudo 로 실행하거나 다음 후 새 터미널 열기:"
+        echo "         sudo usermod -aG docker \$USER && newgrp docker"
+        exit 1
+    fi
+    if ! docker compose version >/dev/null 2>&1; then
+        echo "[6v6] ✗ 'docker compose' plugin 이 없습니다."
+        echo "      → 'bash 6v6.sh install' 로 추가 설치"
+        exit 1
+    fi
+}
+
 cmd_up() {
+    cmd_check_docker
     ensure_env
-    echo "[6v6] docker compose build + up 시작 — 첫 빌드는 5~8 분."
+    echo "[6v6] docker compose build + up 시작 — 첫 빌드는 8~12 분 (Wazuh + 7 vuln 사이트 포함)."
     docker compose build
     docker compose up -d
     echo
@@ -168,18 +262,29 @@ cmd_help() {
     cat <<'HELP'
 사용법: bash 6v6.sh <command>
 
-  up        빌드 + 기동
+  install   docker + docker compose + 보조 도구 자동 설치 (Debian/Ubuntu)
+            → 처음 환경에서 한 번만. 'docker' 그룹 가입 후 새 터미널 열기.
+  up        빌드 + 기동 (docker 사전 검증 포함)
   down      컨테이너 정지 (볼륨 보존)
   destroy   컨테이너 + 볼륨 + 이미지 삭제
   status    컨테이너 상태 + 외부 접속 안내
-  smoke     외부 노출 포트 + 컨테이너 헬스 체크
+  smoke     외부 노출 포트 + 컨테이너 + Wazuh agent + SSH 헬스 체크
   logs <svc>  컨테이너 로그 follow
 
-서비스: bastion / secu / web / juiceshop / siem / attacker / portal
+처음 사용 흐름 (리눅스만 설치된 새 VM):
+  bash 6v6.sh install     # docker + 도구 자동 설치
+  newgrp docker           # 또는 새 터미널 열기
+  bash 6v6.sh up          # 6v6 환경 기동
+  bash 6v6.sh status      # 외부 접속 안내 표시
+  bash 6v6.sh smoke       # 헬스 체크
+
+서비스: bastion / secu / web / juiceshop / dvwa / neobank / govportal /
+       mediforum / adminconsole / aicompanion / siem / attacker / portal
 HELP
 }
 
 case "${1:-help}" in
+    install)  cmd_install ;;
     up)       cmd_up ;;
     down)     cmd_down ;;
     destroy)  cmd_destroy ;;
