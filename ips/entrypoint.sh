@@ -15,6 +15,14 @@ fi
 # ─── Routing: ext (10.20.30/24) -> back via fw on pipe ────
 echo "[ips] adding return route to ext via fw $FW_PIPE_IP"
 ip route add 10.20.30.0/24 via "$FW_PIPE_IP" 2>/dev/null || true
+
+# ─── NAT: masquerade so dmz services reply to ips (not their default GW) ──
+echo "[ips] enabling NAT masquerade on dmz NIC"
+DMZ_IFACE=$(ip -o -4 addr show | awk '$4 ~ /^10\.20\.32\./ {print $2; exit}')
+nft "add table ip 6v6_nat" 2>/dev/null || true
+nft "add chain ip 6v6_nat postrouting { type nat hook postrouting priority 100 ; }" 2>/dev/null || true
+nft "add rule ip 6v6_nat postrouting oifname \"$DMZ_IFACE\" ip saddr 10.20.30.0/24 masquerade" 2>/dev/null || true
+nft "add rule ip 6v6_nat postrouting oifname \"$DMZ_IFACE\" ip saddr 10.20.31.0/24 masquerade" 2>/dev/null || true
 # int (10.20.40/24) is reached via web (dmz NIC = 10.20.32.80) — but web does L7
 # proxy, not L3 forward. ips doesn't need a route to int — incoming TCP to dmz
 # 10.20.32.80 (web) terminates there.
