@@ -128,6 +128,41 @@ cmd_check_kernel() {
     fi
 }
 
+cmd_setup_forward() {
+    # Docker's DOCKER-INTERNAL chain drops packets between containers on
+    # different bridges by default. For our 4-tier chain (fw->ips->web->vuln)
+    # to work, we must allow forwarding between our bridges in DOCKER-USER.
+    if ! command -v sudo >/dev/null 2>&1; then
+        echo "[6v6] WARN: sudo unavailable — cannot configure inter-bridge forwarding"
+        return
+    fi
+
+    local ext_br pipe_br dmz_br int_br
+    ext_br=$(docker network inspect 6v6-ext  -f '{{range $k,$v := .Options}}{{if eq $k "com.docker.network.bridge.name"}}{{$v}}{{end}}{{end}}' 2>/dev/null)
+    [ -z "$ext_br" ]  && ext_br=$(docker network inspect 6v6-ext  -f '{{.Id}}' 2>/dev/null | cut -c1-12 | sed 's/^/br-/')
+    pipe_br=$(docker network inspect 6v6-pipe -f '{{.Id}}' 2>/dev/null | cut -c1-12 | sed 's/^/br-/')
+    dmz_br=$(docker network inspect 6v6-dmz  -f '{{.Id}}' 2>/dev/null | cut -c1-12 | sed 's/^/br-/')
+    int_br=$(docker network inspect 6v6-int  -f '{{.Id}}' 2>/dev/null | cut -c1-12 | sed 's/^/br-/')
+
+    if [ -z "$pipe_br" ] || [ -z "$dmz_br" ]; then
+        echo "[6v6] WARN: cannot detect 6v6 bridge interfaces — networks created?"
+        return
+    fi
+
+    echo "[6v6] inserting DOCKER-USER forward rules (ext<->pipe<->dmz<->int)"
+    echo "      ext=$ext_br  pipe=$pipe_br  dmz=$dmz_br  int=$int_br"
+    sudo iptables -F DOCKER-USER 2>/dev/null || true
+    for pair in \
+        "$ext_br $pipe_br" "$pipe_br $ext_br" \
+        "$pipe_br $dmz_br" "$dmz_br $pipe_br" \
+        "$dmz_br $int_br"  "$int_br $dmz_br"  ; do
+        local in=${pair% *} out=${pair#* }
+        sudo iptables -I DOCKER-USER -i "$in" -o "$out" -j ACCEPT 2>/dev/null || true
+    done
+    # Always end with the default RETURN
+    sudo iptables -A DOCKER-USER -j RETURN 2>/dev/null || true
+}
+
 cmd_up() {
     cmd_check_docker
     cmd_check_kernel
@@ -136,6 +171,8 @@ cmd_up() {
     echo "      build + start takes 10-15 min (Wazuh full stack + 7 vuln sites)."
     docker compose build
     docker compose up -d
+    sleep 3   # let docker create networks + bridges before we tweak iptables
+    cmd_setup_forward
     echo
     echo "[6v6] up done. Wazuh stack takes 1-2 min after 'up' to fully initialize."
     echo "      Run 'bash 6v6.sh smoke' after ~2 min for full health check."
