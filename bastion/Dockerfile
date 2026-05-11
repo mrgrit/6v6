@@ -22,6 +22,15 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     apt-get install -y --no-install-recommends docker-ce-cli && \
     rm -rf /var/lib/apt/lists/*
 
+# osquery (W07 호스트 가시화)
+RUN curl -L https://pkg.osquery.io/deb/pubkey.gpg | \
+        gpg --dearmor -o /etc/apt/keyrings/osquery.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/osquery.gpg] https://pkg.osquery.io/deb deb main" \
+        > /etc/apt/sources.list.d/osquery.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends osquery && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN pip3 install --no-cache-dir fastapi uvicorn[standard] httpx pydantic
 
 RUN mkdir -p /run/sshd /var/lib/bastion && \

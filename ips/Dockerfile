@@ -11,6 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
+# osquery (W07)
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -L https://pkg.osquery.io/deb/pubkey.gpg | \
+        gpg --dearmor -o /etc/apt/keyrings/osquery.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/osquery.gpg] https://pkg.osquery.io/deb deb main" \
+        > /etc/apt/sources.list.d/osquery.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends osquery && \
+    rm -rf /var/lib/apt/lists/*
+
 # Wazuh agent — Suricata eve.json shipped via agent
 RUN curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
         gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && \
