@@ -37,14 +37,17 @@ RUN mkdir -p /run/sshd /var/www/landing /etc/apache2/ssl && \
 RUN a2enmod proxy proxy_http proxy_wstunnel headers ssl rewrite security2 && \
     a2dissite 000-default || true
 
-# ModSecurity 활성화 + audit log JSON 형식 (Wazuh 에서 decoder 처리 친화)
+# ModSecurity 활성화 + audit log JSON 형식 (Wazuh decoder + jq 처리 친화)
+# Note: sed substitution 은 매치 없으면 silent skip 이라, JSON 형식 미보장. 새 파일로 다시 작성.
 RUN if [ ! -f /etc/modsecurity/modsecurity.conf ]; then \
         cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf || true; \
     fi && \
     sed -i 's|^SecRuleEngine .*|SecRuleEngine On|' /etc/modsecurity/modsecurity.conf && \
-    sed -i 's|^SecAuditLogFormat .*|SecAuditLogFormat JSON|' /etc/modsecurity/modsecurity.conf && \
     sed -i 's|^SecAuditEngine .*|SecAuditEngine RelevantOnly|' /etc/modsecurity/modsecurity.conf && \
-    sed -i 's|^SecAuditLog .*|SecAuditLog /var/log/apache2/modsec_audit.log|' /etc/modsecurity/modsecurity.conf
+    sed -i 's|^SecAuditLog .*|SecAuditLog /var/log/apache2/modsec_audit.log|' /etc/modsecurity/modsecurity.conf && \
+    # SecAuditLogFormat / SecAuditLogType / SecAuditLogParts 명시 (기존 라인 제거 + 추가)
+    sed -i '/^SecAuditLogFormat/d;/^SecAuditLogType/d;/^SecAuditLogParts/d' /etc/modsecurity/modsecurity.conf && \
+    printf '\n# 6v6 — JSON one-line per transaction (jq + Wazuh decoder)\nSecAuditLogFormat JSON\nSecAuditLogType Serial\nSecAuditLogParts ABCFHZ\n' >> /etc/modsecurity/modsecurity.conf
 
 # 랜딩 페이지 + vhost
 COPY web/landing/ /var/www/landing/
