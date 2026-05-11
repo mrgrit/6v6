@@ -18,7 +18,7 @@ ip route add 10.20.32.0/24 via "$IPS_PIPE_IP" 2>/dev/null || true
 ip route add 10.20.40.0/24 via "$IPS_PIPE_IP" 2>/dev/null || true
 
 # ─── nftables ─────────────────────────────────────────
-echo "[fw] applying nftables (6v6_filter table)"
+echo "[fw] applying nftables (six_filter / six_nat tables)"
 nft -f /etc/nftables.conf 2>&1 | sed 's/^/  /' || echo "[fw] WARN: nft apply failed"
 
 # ─── HAProxy self-signed cert (for 443 termination) ────
