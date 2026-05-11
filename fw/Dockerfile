@@ -6,9 +6,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openssh-server sudo iputils-ping iproute2 \
         nftables ipset \
+        iptables \
         haproxy \
         curl wget gnupg lsb-release \
-        jq vim less tcpdump \
+        jq vim less tcpdump conntrack \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
