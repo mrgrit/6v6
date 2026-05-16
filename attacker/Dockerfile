@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openssh-server sudo iputils-ping iproute2 \
         rsyslog \
         nmap hydra sqlmap nikto \
+        dirb gobuster john hashcat \
+        tcpdump exploitdb \
         curl wget jq dnsutils whois \
         netcat-openbsd ncat socat \
         python3 python3-pip git \
@@ -13,10 +15,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir requests beautifulsoup4 pwntools
+# scapy (Python pkg) + pwntools (이미) + requests / bs4
+# ffuf — apt 패키지 없음 (Ubuntu 22.04). Go binary go install (단, builder 단계 분리)
+RUN pip3 install --no-cache-dir requests beautifulsoup4 pwntools scapy
 
-ARG BUILD_WITH_MSF=0
-RUN if [ "$BUILD_WITH_MSF" = "1" ]; then \
+# ffuf — github release tar.gz 직접 install (apt 없음)
+RUN curl -sSL https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_linux_amd64.tar.gz \
+        -o /tmp/ffuf.tar.gz && \
+    tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin ffuf && \
+    chmod +x /usr/local/bin/ffuf && \
+    rm /tmp/ffuf.tar.gz
+
+# msfconsole — default 설치 (학생 lab 의 13 도구 중 1). 빌드 시간 ~10 min 증가.
+# SKIP_MSF=1 build arg 로 생략 가능.
+ARG SKIP_MSF=0
+RUN if [ "$SKIP_MSF" != "1" ]; then \
         curl -sSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb -o /tmp/msfinstall && \
         chmod +x /tmp/msfinstall && /tmp/msfinstall || echo "msf install skipped"; \
     fi
