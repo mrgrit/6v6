@@ -30,8 +30,10 @@ class SubAgentHandler(BaseHTTPRequestHandler):
             script = body.get("script", "echo ok")
             timeout = body.get("timeout", 60)
             try:
-                r = subprocess.run(script, shell=True, capture_output=True, text=True, timeout=timeout)
-                result = {"exit_code": r.returncode, "stdout": r.stdout[:10000], "stderr": r.stderr[:5000]}
+                r = subprocess.run(script, shell=True, executable="/bin/bash",
+                                   capture_output=True, text=True, timeout=timeout)
+                # 30000 chars — 13 도구 매트릭스 + nikto -Version 같은 verbose 출력 수용
+                result = {"exit_code": r.returncode, "stdout": r.stdout[:30000], "stderr": r.stderr[:5000]}
             except subprocess.TimeoutExpired:
                 result = {"exit_code": -1, "stdout": "", "stderr": "timeout"}
             except Exception as e:
