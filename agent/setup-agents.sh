@@ -38,10 +38,10 @@ for c in "${CONTAINERS[@]}"; do
     # 2) 기존 SubAgent 종료
     docker exec "$c" bash -c "pkill -f /tmp/subagent.py 2>/dev/null || true; sleep 0.5"
 
-    # 3) 가동 — exec 로 bash → python3 자리바꿈 (& background 없음, docker exec -d
-    #          의 detach 후 bash 부모 종료에 영향 받지 않음. bastion sshd PID 1 호환)
+    # 3) 가동 — trap 으로 bash 의 HUP/TERM 무시 + exec 로 python3 자리바꿈
+    #          (subagent.py 도 SIGHUP ignore — 2중 격리)
     docker exec -d "$c" bash -c \
-        "export CCC_ROLE=$role; exec python3 /tmp/subagent.py >> /tmp/subagent.log 2>&1 < /dev/null"
+        "trap '' HUP TERM; export CCC_ROLE=$role; exec python3 /tmp/subagent.py >> /tmp/subagent.log 2>&1 < /dev/null"
 
     # 4) 헬스
     sleep 0.5
