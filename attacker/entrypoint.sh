@@ -30,5 +30,11 @@ service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
 sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
 sed -i 's|^#LogLevel.*|LogLevel INFO|' /etc/ssh/sshd_config
 
+# SubAgent (Manager A2A worker on :8002)
+if [ -f /opt/subagent.py ]; then
+    echo "[attacker] starting SubAgent on :8002"
+    CCC_ROLE=attacker nohup python3 /opt/subagent.py > /var/log/subagent.log 2>&1 < /dev/null &
+fi
+
 echo "[attacker] starting sshd"
 exec /usr/sbin/sshd -D -e

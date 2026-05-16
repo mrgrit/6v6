@@ -27,6 +27,7 @@ RUN mkdir -p /run/sshd && \
 
 COPY attacker/entrypoint.sh /entrypoint.sh
 COPY attacker/motd /etc/motd
+COPY agent/subagent.py /opt/subagent.py
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 22
