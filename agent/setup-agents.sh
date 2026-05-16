@@ -18,10 +18,12 @@ REPO_ROOT="$(dirname "$HERE")"
 SKIP_MANAGER=0
 [ "${1:-}" = "--skip" ] && SKIP_MANAGER=1
 
-# ── 5+ 컨테이너에 SubAgent 배포 ──────────────────────────────────────
-echo "[6v6-agents] (1/3) deploy SubAgent → 6 컨테이너"
+# ── SubAgent 배포 ───────────────────────────────────────────────────
+# 대상: Manager 의 worker 가 필요한 5 컨테이너.
+# 6v6-bastion 은 Manager 역할 본인 — SubAgent 불필요 (자기 자신은 subprocess 직접).
+echo "[6v6-agents] (1/3) deploy SubAgent → 5 컨테이너 (bastion 제외 — Manager 본인)"
 
-CONTAINERS=(6v6-bastion 6v6-attacker 6v6-fw 6v6-ips 6v6-web 6v6-siem)
+CONTAINERS=(6v6-attacker 6v6-fw 6v6-ips 6v6-web 6v6-siem)
 
 for c in "${CONTAINERS[@]}"; do
     if ! docker ps --format '{{.Names}}' | grep -q "^$c\$"; then
