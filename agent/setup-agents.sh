@@ -19,8 +19,8 @@ SKIP_MANAGER=0
 [ "${1:-}" = "--skip" ] && SKIP_MANAGER=1
 
 # ── SubAgent 배포 ───────────────────────────────────────────────────
-# 대상: Manager 의 worker 가 필요한 5 컨테이너.
-# 6v6-bastion 은 Manager 역할 본인 — SubAgent 불필요 (자기 자신은 subprocess 직접).
+# 대상: Manager 의 worker 가 필요한 5 컨테이너 (bastion 제외 — Manager 본인).
+# 멱등: 컨테이너의 entrypoint 에서 영구 가동 중인 경우 skip. 없으면 ad-hoc 가동.
 echo "[6v6-agents] (1/3) deploy SubAgent → 5 컨테이너 (bastion 제외 — Manager 본인)"
 
 CONTAINERS=(6v6-attacker 6v6-fw 6v6-ips 6v6-web 6v6-siem)
@@ -32,23 +32,26 @@ for c in "${CONTAINERS[@]}"; do
     fi
     role="${c#6v6-}"
 
+    # 0) 이미 가동 중이면 skip (entrypoint 영구 가동분 보호)
+    if docker exec "$c" curl -s --max-time 1 http://127.0.0.1:8002/health 2>/dev/null | grep -q healthy; then
+        echo "  $c: already healthy (skip — entrypoint 영구 또는 직전 가동)"
+        continue
+    fi
+
     # 1) 코드 cp
     docker cp "$HERE/subagent.py" "$c:/tmp/subagent.py" 2>/dev/null
 
-    # 2) 기존 SubAgent 종료
-    docker exec "$c" bash -c "pkill -f /tmp/subagent.py 2>/dev/null || true; sleep 0.5"
-
-    # 3) 가동 — trap 으로 bash 의 HUP/TERM 무시 + exec 로 python3 자리바꿈
-    #          (subagent.py 도 SIGHUP ignore — 2중 격리)
+    # 2) ad-hoc 가동 (entrypoint 미반영 컨테이너 fallback)
+    #    trap + exec + subagent.py 의 SIGHUP ignore = 3중 격리
     docker exec -d "$c" bash -c \
         "trap '' HUP TERM; export CCC_ROLE=$role; exec python3 /tmp/subagent.py >> /tmp/subagent.log 2>&1 < /dev/null"
 
-    # 4) 헬스
-    sleep 0.5
+    # 3) 헬스
+    sleep 1
     if result=$(docker exec "$c" curl -s --max-time 2 http://127.0.0.1:8002/health 2>/dev/null); then
-        echo "  $c: $result"
+        echo "  $c: $result (ad-hoc — entrypoint 정착 권장)"
     else
-        echo "  $c: FAIL — /tmp/subagent.log 확인"
+        echo "  $c: FAIL — /tmp/subagent.log 확인 (entrypoint 정착 필요)"
     fi
 done
 
