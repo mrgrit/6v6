@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """CCC SubAgent — A2A 프로토콜 기반 경량 에이전트"""
-import json, subprocess, os
+import json, signal, subprocess, os
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# docker exec -d 의 부모 종료 / ssh disconnect 시 SIGHUP 전파 차단
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 
 class SubAgentHandler(BaseHTTPRequestHandler):
