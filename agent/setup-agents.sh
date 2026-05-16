@@ -36,9 +36,9 @@ for c in "${CONTAINERS[@]}"; do
     # 2) 기존 SubAgent 종료
     docker exec "$c" bash -c "pkill -f /tmp/subagent.py 2>/dev/null || true; sleep 0.5"
 
-    # 3) 가동 (stdin 닫기 — bastion 같은 strict init 컨테이너에서 필수)
+    # 3) 가동 (setsid + stdin 닫기 — bastion 컨테이너의 strict init reaper 회피)
     docker exec -d "$c" bash -c \
-        "CCC_ROLE=$role nohup python3 /tmp/subagent.py > /tmp/subagent.log 2>&1 < /dev/null &"
+        "export CCC_ROLE=$role; setsid python3 /tmp/subagent.py > /tmp/subagent.log 2>&1 < /dev/null &"
 
     # 4) 헬스
     sleep 0.5
