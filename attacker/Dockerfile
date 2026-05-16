@@ -41,7 +41,7 @@ RUN if [ "$SKIP_MSF" != "1" ]; then \
 # LinPEAS + 추가 enum 도구 (CCC CURRICULUM 원칙 #8 — 폐쇄망 도구 사전 배포)
 # attack/W11 의 fallback, secuops/W13 의 geoip 등 lab 의존 도구
 RUN mkdir -p /opt/tools && \
-    curl -sSL --retry 3 https://raw.githubusercontent.com/peass-ng/PEASS-ng/master/linPEAS/linpeas.sh \
+    curl -sSL --retry 3 -L https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh \
         -o /opt/tools/linpeas.sh && \
     chmod +x /opt/tools/linpeas.sh && \
     echo "LinPEAS: $(wc -c < /opt/tools/linpeas.sh) byte" || \
