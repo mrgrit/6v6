@@ -38,6 +38,20 @@ RUN if [ "$SKIP_MSF" != "1" ]; then \
         chmod +x /tmp/msfinstall && /tmp/msfinstall || echo "msf install skipped"; \
     fi
 
+# LinPEAS + 추가 enum 도구 (CCC CURRICULUM 원칙 #8 — 폐쇄망 도구 사전 배포)
+# attack/W11 의 fallback, secuops/W13 의 geoip 등 lab 의존 도구
+RUN mkdir -p /opt/tools && \
+    curl -sSL --retry 3 https://raw.githubusercontent.com/peass-ng/PEASS-ng/master/linPEAS/linpeas.sh \
+        -o /opt/tools/linpeas.sh && \
+    chmod +x /opt/tools/linpeas.sh && \
+    echo "LinPEAS: $(wc -c < /opt/tools/linpeas.sh) byte" || \
+    echo "LinPEAS download skipped (offline build)"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        geoip-bin geoip-database \
+        net-tools traceroute mtr-tiny \
+        && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /run/sshd && \
     sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config

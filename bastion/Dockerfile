@@ -33,6 +33,28 @@ RUN curl -L https://pkg.osquery.io/deb/pubkey.gpg | \
 
 RUN pip3 install --no-cache-dir fastapi uvicorn[standard] httpx pydantic
 
+# 추가 분석 도구 (CCC CURRICULUM 원칙 #8 — 도구 부재 시 설치 부터)
+# secuops/W13/step2 (enrichment) — geoip-bin / whois
+# attack/W11 (enum) — find / getcap 등 표준
+# attack/W12 (persistence 검사) — auditd / inotify-tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        geoip-bin geoip-database \
+        whois \
+        net-tools traceroute mtr-tiny \
+        libcap2-bin \
+        inotify-tools \
+        auditd audispd-plugins \
+        && rm -rf /var/lib/apt/lists/*
+
+# Wazuh agent (CCC week06 의 SSH brute → 5710/5712 detection 인프라 결함 해소)
+RUN curl -L https://packages.wazuh.com/key/GPG-KEY-WAZUH | \
+        gpg --dearmor -o /etc/apt/keyrings/wazuh.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
+        > /etc/apt/sources.list.d/wazuh.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends wazuh-agent && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /run/sshd /var/lib/bastion && \
     sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
