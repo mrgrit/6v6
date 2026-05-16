@@ -190,6 +190,19 @@ cmd_up() {
     echo "[6v6] up done. Wazuh stack takes 1-2 min after 'up' to fully initialize."
     echo "      Run 'bash 6v6.sh smoke' after ~2 min for full health check."
     cmd_status
+
+    # Manager-SubAgent layer 자동 구성 (skip 시 SKIP_AGENTS=1)
+    if [ "${SKIP_AGENTS:-0}" = "0" ] && [ -x agent/setup-agents.sh ]; then
+        echo
+        echo "[6v6] starting Manager + SubAgent layer (SKIP_AGENTS=1 로 skip 가능)..."
+        bash agent/setup-agents.sh
+    fi
+}
+
+cmd_agents() {
+    # 수동 호출 — 컨테이너 재가동 없이 agent layer 만 갱신
+    [ -x agent/setup-agents.sh ] || { echo "[6v6] agent/setup-agents.sh 없음"; exit 1; }
+    bash agent/setup-agents.sh "$@"
 }
 
 cmd_down() {
@@ -375,7 +388,9 @@ Usage: bash 6v6.sh <command>
 Quick start (fresh Linux VM):
   bash 6v6.sh install     # auto-install docker + helpers
   newgrp docker           # or open new terminal
-  bash 6v6.sh up          # start 6v6 environment
+  bash 6v6.sh up          # start 6v6 environment (포함: Manager + SubAgent)
+                          # SKIP_AGENTS=1 환경변수로 agent 가동 생략
+  bash 6v6.sh agents      # agent layer 만 갱신 (컨테이너 유지)
   bash 6v6.sh status      # show access info
   bash 6v6.sh smoke       # health check
 
@@ -392,6 +407,7 @@ case "${1:-help}" in
     status)   cmd_status ;;
     smoke)    cmd_smoke ;;
     logs)     shift; cmd_logs "$@" ;;
+    agents)   shift; cmd_agents "$@" ;;
     help|-h|--help) cmd_help ;;
     *) cmd_help; exit 1 ;;
 esac
