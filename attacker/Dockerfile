@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         rsyslog \
         nmap hydra sqlmap nikto \
         dirb gobuster john hashcat \
-        tcpdump exploitdb \
+        tcpdump \
         curl wget jq dnsutils whois \
         netcat-openbsd ncat socat \
         python3 python3-pip git \
@@ -19,12 +19,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ffuf — apt 패키지 없음 (Ubuntu 22.04). Go binary go install (단, builder 단계 분리)
 RUN pip3 install --no-cache-dir requests beautifulsoup4 pwntools scapy
 
-# ffuf — github release tar.gz 직접 install (apt 없음)
+# ffuf — github release (ubuntu 22.04 apt 없음)
 RUN curl -sSL https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_linux_amd64.tar.gz \
         -o /tmp/ffuf.tar.gz && \
     tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin ffuf && \
     chmod +x /usr/local/bin/ffuf && \
     rm /tmp/ffuf.tar.gz
+
+# searchsploit (exploitdb) — github clone (ubuntu 22.04 apt 없음, kali 전용)
+RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb && \
+    ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit
 
 # msfconsole — default 설치 (학생 lab 의 13 도구 중 1). 빌드 시간 ~10 min 증가.
 # SKIP_MSF=1 build arg 로 생략 가능.
