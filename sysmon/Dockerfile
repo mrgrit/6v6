@@ -20,27 +20,8 @@ RUN useradd -m -s /bin/bash -G sudo ccc && \
     sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
 # sysmon 의 default config (학생이 W11 에서 직접 수정)
-RUN mkdir -p /opt/sysmon && \
-    cat > /opt/sysmon/config.xml <<'XML' && \
-<Sysmon schemaversion="4.30">
-  <EventFiltering>
-    <RuleGroup groupRelation="or">
-      <ProcessCreate onmatch="include">
-        <Image condition="contains">curl</Image>
-        <Image condition="contains">wget</Image>
-        <Image condition="contains">nmap</Image>
-        <Image condition="contains">sqlmap</Image>
-      </ProcessCreate>
-      <NetworkConnect onmatch="include">
-        <DestinationPort>22</DestinationPort>
-        <DestinationPort>443</DestinationPort>
-        <DestinationPort>3389</DestinationPort>
-      </NetworkConnect>
-    </RuleGroup>
-  </EventFiltering>
-</Sysmon>
-XML
-    true
+RUN mkdir -p /opt/sysmon
+COPY sysmon/config.xml /opt/sysmon/config.xml
 
 # Custom entrypoint — sysmon -i config.xml + ssh key 배포 + sshd 시작 (systemd 안에서)
 COPY sysmon/init-sysmon.sh /etc/cont-init.d/00-sysmon.sh
