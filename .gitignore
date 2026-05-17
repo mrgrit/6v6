@@ -15,3 +15,6 @@ keys/id_rsa.pub
 
 # OpenCTI overlay env (학생 환경마다 다른 UUID/key)
 .env.opencti
+
+# MISP overlay env (학생 환경마다 다른 password)
+.env.misp

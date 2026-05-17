@@ -26,6 +26,20 @@ ensure_ssh_keys() {
     chmod 644 keys/id_rsa.pub 2>/dev/null || true
 }
 
+ensure_misp_env() {
+    # secuops/W14 (MISP) 의 학생 신규 배포. .env.misp 가 없으면 template + 학생 환경 값 자동.
+    [ -f .env.misp ] && return 0
+    [ -f .env.misp.example ] || return 0
+    cp .env.misp.example .env.misp
+    VM_IP=$(vm_ip 2>/dev/null || echo "127.0.0.1")
+    sed -i "s|^BASE_URL=.*|BASE_URL=https://${VM_IP}|" .env.misp
+    sed -i "s|^MYSQL_PASSWORD=.*|MYSQL_PASSWORD=$(openssl rand -hex 16)|" .env.misp
+    sed -i "s|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)|" .env.misp
+    sed -i "s|^DISABLE_IPV6=.*|DISABLE_IPV6=true|" .env.misp
+    chmod 600 .env.misp
+    echo "[6v6] generated .env.misp — MISP 5 컨테이너 stack (core/db/redis/modules/mail)"
+}
+
 ensure_opencti_env() {
     # secuops/W12-W13 (OpenCTI) 의 학생 신규 배포 자동화. .env.opencti 가 없으면 자동 생성.
     # docker-compose.opencti.yml 의 모든 ${OPENCTI_*} / ${MINIO_*} / ${RABBITMQ_*} env 채움.
@@ -242,14 +256,23 @@ cmd_up() {
     ensure_env
     ensure_ssh_keys
     ensure_opencti_env || true   # OpenCTI overlay 활성화 시점에 필요
-    echo "[6v6] docker compose build + up — first run downloads 12 GB of images,"
-    echo "      build + start takes 15-25 min (Wazuh + 7 vuln sites + OpenCTI 20 컨테이너)."
-    # OpenCTI overlay 는 SKIP_OPENCTI=1 로 비활성. RAM 4GB+ 권장 (8GB 안정).
+    ensure_misp_env || true       # MISP overlay 활성화 시점에 필요
+    echo "[6v6] docker compose build + up — first run downloads ~15 GB of images,"
+    echo "      build + start takes 20-30 min (Wazuh + 7 vuln + OpenCTI 20 + MISP 5)."
+    # overlay 는 SKIP_OPENCTI=1 / SKIP_MISP=1 로 비활성. 자원 적은 학생 환경.
     COMPOSE_FILES="-f docker-compose.yaml"
+    ENV_FILES="--env-file .env"
     if [ "${SKIP_OPENCTI:-0}" = "0" ] && [ -f docker-compose.opencti.yml ]; then
-        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.opencti.yml --env-file .env --env-file .env.opencti"
-        echo "[6v6] OpenCTI overlay 활성 (SKIP_OPENCTI=1 로 비활성 가능)"
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.opencti.yml"
+        ENV_FILES="$ENV_FILES --env-file .env.opencti"
+        echo "[6v6] OpenCTI overlay 활성 (SKIP_OPENCTI=1 로 비활성)"
     fi
+    if [ "${SKIP_MISP:-0}" = "0" ] && [ -f docker-compose.misp.yml ]; then
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.misp.yml"
+        ENV_FILES="$ENV_FILES --env-file .env.misp"
+        echo "[6v6] MISP overlay 활성 (SKIP_MISP=1 로 비활성)"
+    fi
+    COMPOSE_FILES="$COMPOSE_FILES $ENV_FILES"
     docker compose $COMPOSE_FILES build
     docker compose $COMPOSE_FILES up -d
     sleep 3   # let docker create networks + bridges before we tweak iptables
