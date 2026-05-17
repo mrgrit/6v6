@@ -45,10 +45,18 @@ RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/e
 
 # msfconsole — default 설치 (학생 lab 의 13 도구 중 1). 빌드 시간 ~10 min 증가.
 # SKIP_MSF=1 build arg 로 생략 가능.
+# msfinstall 이 추가하는 apt repo 의 GPG key 가 2026 갱신 후 deprecate — 신규 배포
+# 시 apt-key 누락으로 후속 apt-get update 가 NO_PUBKEY 로 fail 함. 따라서 install
+# 후 sources.list 의 signed-by= 형식으로 keyring 재바인딩 + 학생 신규 배포 안정성
+# 위해 실패 시 repo 비활성화 (msf 자체는 이미 설치됨 = apt update 만 막지 않으면 됨).
 ARG SKIP_MSF=0
 RUN if [ "$SKIP_MSF" != "1" ]; then \
         curl -sSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb -o /tmp/msfinstall && \
         chmod +x /tmp/msfinstall && /tmp/msfinstall || echo "msf install skipped"; \
+        if [ -f /etc/apt/sources.list.d/metasploit-framework.list ]; then \
+            echo "[attacker] disabling metasploit apt repo (GPG key 갱신 회피 — msf binary 는 이미 설치됨)"; \
+            mv /etc/apt/sources.list.d/metasploit-framework.list /etc/apt/sources.list.d/metasploit-framework.list.disabled; \
+        fi; \
     fi
 
 # LinPEAS + 추가 enum 도구 (CCC CURRICULUM 원칙 #8 — 폐쇄망 도구 사전 배포)
