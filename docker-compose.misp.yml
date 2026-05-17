@@ -92,8 +92,6 @@ services:
     restart: always
     cap_add:
       - AUDIT_WRITE
-    build:
-      context: core/.
       args:
         - CORE_TAG=${CORE_TAG:?Missing or outdated .env file, see README.md for instructions}
         - CORE_COMMIT=${CORE_COMMIT}
@@ -338,8 +336,6 @@ services:
   misp-modules:
     image: ${REGISTRY_MIRROR_URL:-}ghcr.io/misp/misp-docker/misp-modules:${MODULES_RUNNING_TAG:-latest}
     restart: always
-    build:
-      context: modules/.
       args:
         - MODULES_TAG=${MODULES_TAG:?Missing or outdated .env file, see README.md for instructions}
         - MODULES_COMMIT=${MODULES_COMMIT}
@@ -365,8 +361,6 @@ services:
       - misp-guard
     restart: always
     image: ${REGISTRY_MIRROR_URL:-}ghcr.io/misp/misp-docker/misp-guard:${GUARD_RUNNING_TAG:-latest}
-    build:
-      context: guard/.
       args:
         - GUARD_TAG=${GUARD_TAG:?Missing or outdated .env file, see README.md for instructions}
         - GUARD_COMMIT=${GUARD_COMMIT}
