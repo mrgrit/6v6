@@ -9,5 +9,10 @@ services:
     ports:
       - "9200:9200"   # bastion API (P2 Track B — 학생 배포에는 publish 안 함)
     volumes:
+      # ⚠️ docker compose 는 override 의 volumes 가 main 의 volumes 를 *replace* 하므로
+      #    main 의 4개 (bastion-data / docker.sock / keys / API code) 를 모두 다시 명시.
+      - bastion-data:/var/lib/bastion
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./keys:/keys:ro
       - /home/ccc/bastion:/home/ccc/bastion
       - /home/ccc/data:/home/ccc/data
