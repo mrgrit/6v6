@@ -1,7 +1,7 @@
 FROM wazuh/wazuh-manager:4.10.0
 
 # openssh-server + sudo (Amazon Linux 2023)
-RUN yum install -y openssh-server openssh-clients sudo passwd && yum clean all && \
+RUN yum install -y openssh-server openssh-clients sudo passwd hostname && yum clean all && \
     ssh-keygen -A && \
     mkdir -p /run/sshd /var/empty/sshd && \
     sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
