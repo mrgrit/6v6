@@ -17,6 +17,10 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
+# ffuf scraper config dir — attack/W07 의 ffuf 가 ~/.config/ffuf/scraper 필요. 사전 생성.
+mkdir -p /home/$SSH_USER/.config/ffuf/scraper
+chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.config
+
 # bastion 의 pubkey 을 /keys (호스트 RO mount) → ccc 의 authorized_keys 배포. bastion 의
 # ProxyJump ssh 가 password 없이 통과. 학생 환경마다 다른 키 (gitignore).
 if [ -f /keys/id_rsa.pub ]; then
