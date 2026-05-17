@@ -132,6 +132,7 @@ services:
       - APP__ENCRYPTION_KEY=${OPENCTI_ENCRYPTION_KEY}
       - REDIS__HOSTNAME=redis
       - REDIS__PORT=6379
+      - REDIS__PASSWORD=${REDIS_PASSWORD:-redispassword}
       - ELASTICSEARCH__URL=http://elasticsearch:9200
       - ELASTICSEARCH__NUMBER_OF_REPLICAS=0
       - MINIO__ENDPOINT=minio
