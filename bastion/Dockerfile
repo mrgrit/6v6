@@ -31,7 +31,7 @@ RUN curl -L https://pkg.osquery.io/deb/pubkey.gpg | \
     apt-get install -y --no-install-recommends osquery && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir fastapi uvicorn[standard] httpx pydantic
+RUN pip3 install --no-cache-dir fastapi uvicorn[standard] httpx pydantic pyyaml
 
 # 추가 분석 도구 (CCC CURRICULUM 원칙 #8 — 도구 부재 시 설치 부터)
 # secuops/W13/step2 (enrichment) — geoip-bin / whois
@@ -60,7 +60,15 @@ RUN mkdir -p /run/sshd /var/lib/bastion && \
     sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
+# 6v6 의 minimal stub api (fallback) — LLM_BASE_URL 미설정 시 /health 만
 COPY bastion/api.py /opt/bastion-api/api.py
+
+# Full CCC bastion source — apps/bastion + packages/bastion + packages/manager_ai
+# (mrgrit/ccc 의 동일 코드, 6v6 build context 에 복사). aisec 89 step 의
+# /chat + /kg/* endpoint 제공. PYTHONPATH 로 import 경로 통합.
+COPY bastion/src /opt/ccc-src
+ENV PYTHONPATH=/opt/ccc-src
+
 COPY bastion/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

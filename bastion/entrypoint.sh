@@ -123,9 +123,24 @@ RSYSLOG
 service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
 
 echo "[bastion] starting Bastion API on :9100"
-cd /opt/bastion-api && \
-    python3 -m uvicorn api:app --host 0.0.0.0 --port 9100 \
-        > /var/log/bastion-api.log 2>&1 &
+# Full CCC bastion (apps.bastion.api) 가 import 가능 + LLM_BASE_URL 설정 시 활성.
+# 아니면 minimal stub (/opt/bastion-api/api.py) 로 fallback.
+if [ -d /opt/ccc-src/apps/bastion ] && [ -n "${LLM_BASE_URL:-}" ]; then
+    : "${LLM_MANAGER_MODEL:=gemma3:4b}"
+    : "${LLM_SUBAGENT_MODEL:=gemma3:4b}"
+    # packages/ 가 sys.path 에 있어야 `from bastion.X` import 가능 (CCC namespace 규약)
+    export LLM_BASE_URL LLM_MANAGER_MODEL LLM_SUBAGENT_MODEL \
+           PYTHONPATH=/opt/ccc-src:/opt/ccc-src/packages
+    echo "[bastion] Full Bastion (apps.bastion.api) — LLM=$LLM_BASE_URL model=$LLM_MANAGER_MODEL"
+    cd /opt/ccc-src && \
+        python3 -m uvicorn apps.bastion.api:app --host 0.0.0.0 --port 9100 \
+            > /var/log/bastion-api.log 2>&1 &
+else
+    echo "[bastion] Stub Bastion (/health only) — LLM_BASE_URL 미설정 시 fallback"
+    cd /opt/bastion-api && \
+        python3 -m uvicorn api:app --host 0.0.0.0 --port 9100 \
+            > /var/log/bastion-api.log 2>&1 &
+fi
 
 # sshd auth events -> syslog
 sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
