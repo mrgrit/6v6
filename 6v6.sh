@@ -32,10 +32,16 @@ ensure_misp_env() {
     [ -f .env.misp.example ] || return 0
     cp .env.misp.example .env.misp
     VM_IP=$(vm_ip 2>/dev/null || echo "127.0.0.1")
-    sed -i "s|^BASE_URL=.*|BASE_URL=https://${VM_IP}|" .env.misp
+    # MISP port 8880/8443 (6v6 의 fw HAProxy 가 80/443 점유 → 충돌 회피)
+    sed -i "s|^BASE_URL=.*|BASE_URL=https://${VM_IP}:8443|" .env.misp
     sed -i "s|^MYSQL_PASSWORD=.*|MYSQL_PASSWORD=$(openssl rand -hex 16)|" .env.misp
     sed -i "s|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)|" .env.misp
     sed -i "s|^DISABLE_IPV6=.*|DISABLE_IPV6=true|" .env.misp
+    sed -i "s|^# CORE_HTTP_PORT=.*|CORE_HTTP_PORT=8880|; s|^CORE_HTTP_PORT=$|CORE_HTTP_PORT=8880|" .env.misp
+    sed -i "s|^# CORE_HTTPS_PORT=.*|CORE_HTTPS_PORT=8443|; s|^CORE_HTTPS_PORT=$|CORE_HTTPS_PORT=8443|" .env.misp
+    # default 값으로 추가 (sed가 못 잡으면)
+    grep -q "^CORE_HTTP_PORT=" .env.misp || echo "CORE_HTTP_PORT=8880" >> .env.misp
+    grep -q "^CORE_HTTPS_PORT=" .env.misp || echo "CORE_HTTPS_PORT=8443" >> .env.misp
     chmod 600 .env.misp
     echo "[6v6] generated .env.misp — MISP 5 컨테이너 stack (core/db/redis/modules/mail)"
 }
