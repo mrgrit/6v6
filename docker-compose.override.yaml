@@ -1,0 +1,13 @@
+# 0.110 전용 override — bastion API 를 컨테이너 안에서 운영 (옵션 C).
+# 학생 배포에는 적용 안 함 (학생 환경에 /home/ccc/bastion / /home/ccc/data 없음).
+# 사용: docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d
+#
+# 운영 사이트가 0.110 에 mrgrit/bastion clone (=/home/ccc/bastion) + KG DB (=/home/ccc/data)
+# 보유한 경우만 의미. compose 가 같은 디렉토리의 override.yaml 자동 merge.
+services:
+  bastion:
+    ports:
+      - "9200:9200"   # bastion API (P2 Track B — 학생 배포에는 publish 안 함)
+    volumes:
+      - /home/ccc/bastion:/home/ccc/bastion
+      - /home/ccc/data:/home/ccc/data

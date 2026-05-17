@@ -55,9 +55,15 @@ Host 6v6-portal portal
     UserKnownHostsFile /dev/null
     ProxyJump 6v6-fw
 
-# Note: 6v6-siem (wazuh-manager official image) has no sshd. Access via:
-#   docker exec -it 6v6-siem bash    (from VM host)
-#   https://siem.6v6.lab/             (real Wazuh dashboard, admin/SecretPassword)
+Host 6v6-siem siem
+    HostName 10.20.32.100
+    User $SSH_USER
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ProxyJump 6v6-fw
+
+# Wazuh Dashboard (https UI, no SSH): https://siem.6v6.lab/
+#   admin / SecretPassword
 SSHCFG
 chmod 600 /home/$SSH_USER/.ssh/config
 chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
@@ -67,9 +73,7 @@ cat > /etc/motd <<MOTD
   6v6 Bastion - single entry point for the lab
 ========================================================
 ProxyJump aliases: ssh secu | ssh web | ssh attacker
-SIEM (Wazuh manager) has no SSH (official image) -
-  Use: docker exec -it 6v6-siem bash  (from VM host)
-  Or:  https://siem.6v6.lab/         (real Wazuh dashboard)
+SIEM via ssh 6v6-siem (ProxyJump fw) or Wazuh dashboard https://siem.6v6.lab/
 API: http://localhost:9100/health
 ========================================================
 MOTD
