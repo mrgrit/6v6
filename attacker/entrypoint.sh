@@ -31,6 +31,18 @@ fi
 sed -i 's|^#PrintMotd.*|PrintMotd yes|' /etc/ssh/sshd_config
 echo "cat /etc/motd 2>/dev/null" >> /home/$SSH_USER/.bashrc
 
+# metasploit-framework — msfinstall 이 /opt/metasploit-framework 에 설치 하지만
+# /usr/local/bin/ 의 wrapper symlink 가 누락되어 `which msfconsole` fail. PATH 의
+# 학생 lab 의 W01 S1 (13 도구 매트릭스) 통과 위해 symlink 생성.
+if [ -d /opt/metasploit-framework/bin ]; then
+    for b in msfconsole msfvenom msfdb msfd msfrpc msfrpcd msfupdate; do
+        if [ -f "/opt/metasploit-framework/bin/$b" ] && [ ! -e "/usr/local/bin/$b" ]; then
+            ln -sf "/opt/metasploit-framework/bin/$b" "/usr/local/bin/$b"
+        fi
+    done
+    echo "[attacker] msf wrappers symlinked to /usr/local/bin/"
+fi
+
 echo "[attacker] configuring rsyslog forward -> $SIEM_HOST:514/udp"
 cat > /etc/rsyslog.d/50-forward-siem.conf <<RSYSLOG
 # 6v6: attacker -> siem syslog forward (syslog paradigm vs Wazuh agent)
