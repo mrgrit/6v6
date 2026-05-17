@@ -17,7 +17,9 @@ RUN useradd -m -s /bin/bash -G sudo ccc && \
     chmod 0440 /etc/sudoers.d/ccc && \
     mkdir -p /run/sshd && \
     sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    # jrei/systemd-ubuntu 의 PAM 이 신규 user 거부 → ssh 의 UsePAM no 로 우회
+    sed -i 's/^UsePAM .*/UsePAM no/; s/^#UsePAM .*/UsePAM no/' /etc/ssh/sshd_config
 
 # sysmon 의 default config (학생이 W11 에서 직접 수정)
 RUN mkdir -p /opt/sysmon

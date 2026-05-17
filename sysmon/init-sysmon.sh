@@ -17,10 +17,6 @@ if ! systemctl is-enabled sysmon >/dev/null 2>&1; then
     sysmon -accepteula -i /opt/sysmon/config.xml 2>&1 | tail -5
 fi
 
-# sshd 시작
-/usr/sbin/sshd -D -e &
-SSHD_PID=$!
-echo "[sysmon-host] sshd started pid=$SSHD_PID"
-
-# systemd service 의 ExecStart 로는 fg blocking 필요 → wait
-wait $SSHD_PID
+# ssh.service 는 jrei/systemd-ubuntu 가 자동 가동 (sshd -D 직접 실행하면 port 22 충돌)
+echo "[sysmon-host] init complete — ssh.service + sysmon.service systemd 가 자동 가동"
+exit 0
