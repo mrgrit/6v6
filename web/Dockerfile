@@ -42,10 +42,10 @@ RUN a2enmod proxy proxy_http proxy_wstunnel headers ssl rewrite security2 && \
 RUN if [ ! -f /etc/modsecurity/modsecurity.conf ]; then \
         cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf || true; \
     fi && \
-    # 학습 환경 default = DetectionOnly (audit log 기록 + 차단 안 함). 학생이
-    # SQLi/XSS 등 직접 학습 가능 + Blue 측 audit log 분석 가능. W08+ 또는 W13 의
-    # advanced step 에서 'SecRuleEngine On' 으로 변경 후 우회 학습.
-    sed -i 's|^SecRuleEngine .*|SecRuleEngine DetectionOnly|' /etc/modsecurity/modsecurity.conf && \
+    # 학습 환경 default = **SecRuleEngine On** (전역 차단). per-vhost override 로
+    # juice.6v6.lab 만 DetectionOnly (010-juice.conf 에서 `SecRuleEngine DetectionOnly`).
+    # 다른 vhost (dvwa/neobank/...) 는 On 유지 → secuops W01-S7 Red 차단 검증 통과.
+    sed -i 's|^SecRuleEngine .*|SecRuleEngine On|' /etc/modsecurity/modsecurity.conf && \
     sed -i 's|^SecAuditEngine .*|SecAuditEngine RelevantOnly|' /etc/modsecurity/modsecurity.conf && \
     sed -i 's|^SecAuditLog .*|SecAuditLog /var/log/apache2/modsec_audit.log|' /etc/modsecurity/modsecurity.conf && \
     # SecAuditLogFormat / SecAuditLogType / SecAuditLogParts 명시 (기존 라인 제거 + 추가)
