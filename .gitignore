@@ -12,3 +12,6 @@ docker-compose.yaml.bak-*
 # 둘 다 학생 환경 전용 — public 도 다른 학생 환경에 쓰면 안 됨. keys/.gitkeep 만 push.
 keys/id_rsa
 keys/id_rsa.pub
+
+# OpenCTI overlay env (학생 환경마다 다른 UUID/key)
+.env.opencti

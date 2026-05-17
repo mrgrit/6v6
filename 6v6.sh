@@ -26,6 +26,48 @@ ensure_ssh_keys() {
     chmod 644 keys/id_rsa.pub 2>/dev/null || true
 }
 
+ensure_opencti_env() {
+    # secuops/W12-W13 (OpenCTI) 의 학생 신규 배포 자동화. .env.opencti 가 없으면 자동 생성.
+    # docker-compose.opencti.yml 의 모든 ${OPENCTI_*} / ${MINIO_*} / ${RABBITMQ_*} env 채움.
+    [ -f .env.opencti ] && return 0
+    if ! command -v openssl >/dev/null 2>&1 || ! command -v uuidgen >/dev/null 2>&1; then
+        echo "[6v6] WARN: openssl/uuidgen 미설치 — OpenCTI overlay 자동 생성 불가."
+        echo "      'sudo apt install -y openssl uuid-runtime' 후 'bash 6v6.sh up' 재실행."
+        return 1
+    fi
+    VM_IP=$(vm_ip 2>/dev/null || echo "127.0.0.1")
+    cat > .env.opencti <<ENV
+# OpenCTI 7.x — 학생 신규 배포 자동 생성. 환경마다 다른 UUID/key (재현 금지).
+OPENCTI_ADMIN_EMAIL=admin@opencti.io
+OPENCTI_ADMIN_PASSWORD=ChangeMe123!
+OPENCTI_ADMIN_TOKEN=$(uuidgen)
+OPENCTI_HEALTHCHECK_ACCESS_KEY=$(uuidgen)
+OPENCTI_ENCRYPTION_KEY=$(openssl rand -base64 32)
+OPENCTI_BASE_URL=http://${VM_IP}:8080
+OPENCTI_EXTERNAL_SCHEME=http
+OPENCTI_HOST=${VM_IP}
+OPENCTI_PORT=8080
+MINIO_ROOT_USER=$(uuidgen)
+MINIO_ROOT_PASSWORD=$(uuidgen)
+RABBITMQ_DEFAULT_USER=opencti
+RABBITMQ_DEFAULT_PASS=$(uuidgen)
+ELASTIC_MEMORY_SIZE=1G
+CONNECTOR_HISTORY_ID=$(uuidgen)
+CONNECTOR_EXPORT_FILE_STIX_ID=$(uuidgen)
+CONNECTOR_EXPORT_FILE_CSV_ID=$(uuidgen)
+CONNECTOR_EXPORT_FILE_TXT_ID=$(uuidgen)
+CONNECTOR_EXPORT_FILE_XLSX_ID=$(uuidgen)
+CONNECTOR_IMPORT_FILE_STIX_ID=$(uuidgen)
+CONNECTOR_IMPORT_FILE_PDF_OBSERVABLES_ID=$(uuidgen)
+CONNECTOR_ANALYSIS_ID=$(uuidgen)
+CONNECTOR_IMPORT_DOCUMENT_ID=$(uuidgen)
+CONNECTOR_IMPORT_EXTERNAL_REFERENCE_ID=$(uuidgen)
+SMTP_HOSTNAME=localhost
+ENV
+    chmod 600 .env.opencti
+    echo "[6v6] generated .env.opencti — OpenCTI 7.x 의 ENCRYPTION_KEY + TOKEN + MINIO + RABBITMQ"
+}
+
 vm_ip() {
     # VM external IP (for student-facing instructions)
     ip -4 -o addr show 2>/dev/null \
@@ -199,10 +241,17 @@ cmd_up() {
     cmd_check_kernel
     ensure_env
     ensure_ssh_keys
-    echo "[6v6] docker compose build + up — first run downloads 6 GB of images,"
-    echo "      build + start takes 10-15 min (Wazuh full stack + 7 vuln sites)."
-    docker compose build
-    docker compose up -d
+    ensure_opencti_env || true   # OpenCTI overlay 활성화 시점에 필요
+    echo "[6v6] docker compose build + up — first run downloads 12 GB of images,"
+    echo "      build + start takes 15-25 min (Wazuh + 7 vuln sites + OpenCTI 20 컨테이너)."
+    # OpenCTI overlay 는 SKIP_OPENCTI=1 로 비활성. RAM 4GB+ 권장 (8GB 안정).
+    COMPOSE_FILES="-f docker-compose.yaml"
+    if [ "${SKIP_OPENCTI:-0}" = "0" ] && [ -f docker-compose.opencti.yml ]; then
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.opencti.yml --env-file .env --env-file .env.opencti"
+        echo "[6v6] OpenCTI overlay 활성 (SKIP_OPENCTI=1 로 비활성 가능)"
+    fi
+    docker compose $COMPOSE_FILES build
+    docker compose $COMPOSE_FILES up -d
     sleep 3   # let docker create networks + bridges before we tweak iptables
     cmd_setup_forward
     echo
