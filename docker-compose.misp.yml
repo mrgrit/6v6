@@ -92,24 +92,6 @@ services:
     restart: always
     cap_add:
       - AUDIT_WRITE
-      args:
-        - CORE_TAG=${CORE_TAG:?Missing or outdated .env file, see README.md for instructions}
-        - CORE_COMMIT=${CORE_COMMIT}
-        - CORE_FLAVOR=${CORE_FLAVOR:-standard}
-        - PHP_VER=${PHP_VER:?Missing or outdated .env file, see README.md for instructions}
-        - PYPI_REDIS_VERSION=${PYPI_REDIS_VERSION}
-        - PYPI_LIEF_VERSION=${PYPI_LIEF_VERSION}
-        - PYPI_PYDEEP2_VERSION=${PYPI_PYDEEP2_VERSION}
-        - PYPI_PYTHON_MAGIC_VERSION=${PYPI_PYTHON_MAGIC_VERSION}
-        - PYPI_MISP_LIB_STIX2_VERSION=${PYPI_MISP_LIB_STIX2_VERSION}
-        - PYPI_MAEC_VERSION=${PYPI_MAEC_VERSION}
-        - PYPI_MIXBOX_VERSION=${PYPI_MIXBOX_VERSION}
-        - PYPI_CYBOX_VERSION=${PYPI_CYBOX_VERSION}
-        - PYPI_PYMISP_VERSION=${PYPI_PYMISP_VERSION}
-        - PYPI_MISP_STIX_VERSION=${PYPI_MISP_STIX_VERSION}
-        - PYPI_TAXII2_CLIENT=${PYPI_TAXII2_CLIENT}
-        - PYPI_SETUPTOOLS_VERSION=${PYPI_SETUPTOOLS_VERSION}
-        - PYPI_SUPERVISOR_VERSION=${PYPI_SUPERVISOR_VERSION}
     depends_on:
       redis:
         condition: service_healthy
@@ -336,10 +318,6 @@ services:
   misp-modules:
     image: ${REGISTRY_MIRROR_URL:-}ghcr.io/misp/misp-docker/misp-modules:${MODULES_RUNNING_TAG:-latest}
     restart: always
-      args:
-        - MODULES_TAG=${MODULES_TAG:?Missing or outdated .env file, see README.md for instructions}
-        - MODULES_COMMIT=${MODULES_COMMIT}
-        - MODULES_FLAVOR=${MODULES_FLAVOR:-standard}
     healthcheck:
       test: "/bin/bash -c '</dev/tcp/localhost/6666'"
       interval: 2s
@@ -361,9 +339,6 @@ services:
       - misp-guard
     restart: always
     image: ${REGISTRY_MIRROR_URL:-}ghcr.io/misp/misp-docker/misp-guard:${GUARD_RUNNING_TAG:-latest}
-      args:
-        - GUARD_TAG=${GUARD_TAG:?Missing or outdated .env file, see README.md for instructions}
-        - GUARD_COMMIT=${GUARD_COMMIT}
     depends_on:
       - misp-core
     ports:
