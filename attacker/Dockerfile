@@ -2,9 +2,13 @@
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+# gnupg = msfinstall (line 65 의 gpg --dearmor) 필수. 누락 시 keyring 파일 미생성 →
+# apt repo NO_PUBKEY → metasploit-framework install 실패 → msfconsole 누락 (W01 S1 fail).
+# 2026-05-18 attack W01 S1 실측 검증 에서 발견. silent skip 금지.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         openssh-server sudo iputils-ping iproute2 \
         rsyslog \
+        gnupg \
         nmap hydra sqlmap nikto \
         dirb gobuster john hashcat \
         tcpdump \
@@ -51,10 +55,12 @@ RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/e
 # 위해 실패 시 repo 비활성화 (msf 자체는 이미 설치됨 = apt update 만 막지 않으면 됨).
 ARG SKIP_MSF=0
 RUN if [ "$SKIP_MSF" != "1" ]; then \
-        curl -sSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb -o /tmp/msfinstall && \
-        chmod +x /tmp/msfinstall && /tmp/msfinstall || echo "msf install skipped"; \
+        curl -fsSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb -o /tmp/msfinstall && \
+        chmod +x /tmp/msfinstall && \
+        /tmp/msfinstall && \
+        msfconsole --version > /dev/null || (echo "[attacker] FATAL: msfconsole install fail — gnupg 누락? apt repo PGP? build abort" && exit 1); \
         if [ -f /etc/apt/sources.list.d/metasploit-framework.list ]; then \
-            echo "[attacker] disabling metasploit apt repo (GPG key 갱신 회피 — msf binary 는 이미 설치됨)"; \
+            echo "[attacker] disabling metasploit apt repo (signed-by= keyring 은 유지 — apt update 차단 회피)"; \
             mv /etc/apt/sources.list.d/metasploit-framework.list /etc/apt/sources.list.d/metasploit-framework.list.disabled; \
         fi; \
     fi
