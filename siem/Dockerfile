@@ -17,9 +17,10 @@ RUN useradd -m -s /bin/bash ccc && \
 # SubAgent — A2A worker on :8002 (다른 컨테이너와 동일한 패턴)
 COPY agent/subagent.py /opt/subagent.py
 
-# cont-init.d scripts — wazuh init 후 sshd + subagent daemon 시작
+# cont-init.d scripts — wazuh init 후 ssh key 배포 (97) + subagent (98) + sshd (99)
+COPY siem/97-deploy-ssh-key.sh /etc/cont-init.d/97-deploy-ssh-key
 COPY siem/98-start-subagent.sh /etc/cont-init.d/98-start-subagent
 COPY siem/99-start-sshd.sh /etc/cont-init.d/99-start-sshd
-RUN chmod +x /etc/cont-init.d/98-start-subagent /etc/cont-init.d/99-start-sshd
+RUN chmod +x /etc/cont-init.d/97-deploy-ssh-key /etc/cont-init.d/98-start-subagent /etc/cont-init.d/99-start-sshd
 
 EXPOSE 22 8002

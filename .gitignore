@@ -7,3 +7,8 @@ node_modules/
 .idea/
 .vscode/
 docker-compose.yaml.bak-*
+
+# 학생 환경마다 다른 SSH key 자동 생성 (6v6.sh up 의 ensure_ssh_keys). public/private
+# 둘 다 학생 환경 전용 — public 도 다른 학생 환경에 쓰면 안 됨. keys/.gitkeep 만 push.
+keys/id_rsa
+keys/id_rsa.pub

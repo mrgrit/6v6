@@ -8,6 +8,24 @@ ensure_env() {
     [ -f .env ] || { echo "[6v6] .env not found -> 'cp .env.example .env' (auto)"; cp .env.example .env; }
 }
 
+ensure_ssh_keys() {
+    # 학생 신규 배포 — keys/ 디렉토리 + bastion SSH key 자동 생성. bind mount 로 6
+    # 컨테이너 (bastion / attacker / fw / ips / web / siem) 가 /keys read-only 마운트.
+    # bastion 의 ccc 가 id_rsa 보유, 나머지가 id_rsa.pub 을 authorized_keys 로 받아
+    # password 없이 ssh 6v6-fw 등 ProxyJump 가능. 학생 환경마다 다른 키 생성 (gitignore).
+    mkdir -p keys
+    if [ ! -f keys/id_rsa ]; then
+        if ! command -v ssh-keygen >/dev/null 2>&1; then
+            echo "[6v6] ssh-keygen 미설치. 'sudo apt install -y openssh-client' 후 재실행."
+            exit 1
+        fi
+        ssh-keygen -t ed25519 -f keys/id_rsa -N "" -C "6v6-bastion@auto" >/dev/null 2>&1
+        echo "[6v6] generated SSH key pair (keys/id_rsa) — 컨테이너 간 password-less SSH 용"
+    fi
+    chmod 600 keys/id_rsa  2>/dev/null || true
+    chmod 644 keys/id_rsa.pub 2>/dev/null || true
+}
+
 vm_ip() {
     # VM external IP (for student-facing instructions)
     ip -4 -o addr show 2>/dev/null \
@@ -180,6 +198,7 @@ cmd_up() {
     cmd_check_docker
     cmd_check_kernel
     ensure_env
+    ensure_ssh_keys
     echo "[6v6] docker compose build + up — first run downloads 6 GB of images,"
     echo "      build + start takes 10-15 min (Wazuh full stack + 7 vuln sites)."
     docker compose build

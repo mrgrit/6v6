@@ -68,6 +68,21 @@ SSHCFG
 chmod 600 /home/$SSH_USER/.ssh/config
 chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
 
+# /keys (호스트 ./keys bind mount, RO) → ccc 의 id_rsa + authorized_keys 배포. bastion
+# 은 양쪽 모두 보유 (id_rsa = ProxyJump client key, authorized_keys = bastion 자체 로그인).
+# 학생 신규 배포 시 6v6.sh 가 ssh-keygen 자동 생성하여 /keys 채움.
+if [ -f /keys/id_rsa ] && [ -f /keys/id_rsa.pub ]; then
+    cp /keys/id_rsa     /home/$SSH_USER/.ssh/id_rsa
+    cp /keys/id_rsa.pub /home/$SSH_USER/.ssh/id_rsa.pub
+    cat /keys/id_rsa.pub > /home/$SSH_USER/.ssh/authorized_keys
+    chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
+    chmod 600 /home/$SSH_USER/.ssh/id_rsa /home/$SSH_USER/.ssh/authorized_keys
+    chmod 644 /home/$SSH_USER/.ssh/id_rsa.pub
+    echo "[bastion] SSH key deployed (id_rsa + authorized_keys) — password-less ssh 6v6-fw 가능"
+else
+    echo "[bastion] WARN: /keys/id_rsa 없음 — 6v6.sh up 의 ensure_ssh_keys 실행 안 됨? password ssh 로 fallback."
+fi
+
 cat > /etc/motd <<MOTD
 ========================================================
   6v6 Bastion - single entry point for the lab

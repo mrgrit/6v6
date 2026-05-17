@@ -12,6 +12,16 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
+# bastion pubkey → ccc authorized_keys (ProxyJump 의 2-hop)
+if [ -f /keys/id_rsa.pub ]; then
+    mkdir -p /home/$SSH_USER/.ssh
+    cat /keys/id_rsa.pub > /home/$SSH_USER/.ssh/authorized_keys
+    chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
+    chmod 700 /home/$SSH_USER/.ssh
+    chmod 600 /home/$SSH_USER/.ssh/authorized_keys
+    echo "[ips] authorized_keys deployed — bastion 의 password-less ssh 가능"
+fi
+
 # ─── Routing: ext (10.20.30/24) -> back via fw on pipe ────
 echo "[ips] adding return route to ext via fw $FW_PIPE_IP"
 ip route add 10.20.30.0/24 via "$FW_PIPE_IP" 2>/dev/null || true

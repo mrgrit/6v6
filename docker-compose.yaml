@@ -30,6 +30,7 @@ services:
     volumes:
       - bastion-data:/var/lib/bastion
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./keys:/keys:ro
     restart: unless-stopped
 
   attacker:
@@ -62,6 +63,7 @@ services:
       - "siem.6v6.lab:10.20.32.100"
     volumes:
       - attacker-home:/home/ccc
+      - ./keys:/keys:ro
     restart: unless-stopped
 
   # ╭─ Edge router: ext <-> pipe ────────────────────────────╮
@@ -93,6 +95,8 @@ services:
       SSH_PASS: ${SSH_PASS:-ccc}
       WAZUH_MANAGER: 10.20.32.100
       IPS_PIPE_IP: 10.20.31.2
+    volumes:
+      - ./keys:/keys:ro
     restart: unless-stopped
 
   # ╭─ IPS: pipe <-> dmz (Suricata sniff + ip_forward) ────╮
@@ -117,6 +121,7 @@ services:
       FW_PIPE_IP: 10.20.31.1
     volumes:
       - ips-suricata-logs:/var/log/suricata
+      - ./keys:/keys:ro
     depends_on:
       - fw
     restart: unless-stopped
@@ -141,6 +146,7 @@ services:
       DEFAULT_GW: 10.20.32.1   # via ips
     volumes:
       - web-apache-logs:/var/log/apache2
+      - ./keys:/keys:ro
     depends_on:
       - ips
       - juiceshop
@@ -205,6 +211,7 @@ services:
       - ./wazuh-config/certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
       - ./wazuh-config/certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
       - ./wazuh-config/certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
+      - ./keys:/keys:ro
       # - ./wazuh-config/api.yaml:/var/ossec/api/configuration/api.yaml  # TEMP REMOVED (DB sqlite open conflict)
     networks:
       dmz:

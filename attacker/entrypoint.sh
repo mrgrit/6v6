@@ -17,6 +17,17 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
+# bastion 의 pubkey 을 /keys (호스트 RO mount) → ccc 의 authorized_keys 배포. bastion 의
+# ProxyJump ssh 가 password 없이 통과. 학생 환경마다 다른 키 (gitignore).
+if [ -f /keys/id_rsa.pub ]; then
+    mkdir -p /home/$SSH_USER/.ssh
+    cat /keys/id_rsa.pub > /home/$SSH_USER/.ssh/authorized_keys
+    chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
+    chmod 700 /home/$SSH_USER/.ssh
+    chmod 600 /home/$SSH_USER/.ssh/authorized_keys
+    echo "[attacker] authorized_keys deployed — bastion 의 password-less ssh 가능"
+fi
+
 sed -i 's|^#PrintMotd.*|PrintMotd yes|' /etc/ssh/sshd_config
 echo "cat /etc/motd 2>/dev/null" >> /home/$SSH_USER/.bashrc
 

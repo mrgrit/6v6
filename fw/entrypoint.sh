@@ -12,6 +12,16 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
+# bastion pubkey → ccc authorized_keys (ProxyJump 의 첫 hop). 학생 환경마다 다른 키.
+if [ -f /keys/id_rsa.pub ]; then
+    mkdir -p /home/$SSH_USER/.ssh
+    cat /keys/id_rsa.pub > /home/$SSH_USER/.ssh/authorized_keys
+    chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
+    chmod 700 /home/$SSH_USER/.ssh
+    chmod 600 /home/$SSH_USER/.ssh/authorized_keys
+    echo "[fw] authorized_keys deployed — bastion 의 password-less ssh 가능"
+fi
+
 # ─── Routing: dmz/int 은 ips 경유 ───────────────────────
 echo "[fw] adding routes (dmz/int via ips $IPS_PIPE_IP)"
 ip route add 10.20.32.0/24 via "$IPS_PIPE_IP" 2>/dev/null || true

@@ -22,6 +22,16 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
+# bastion pubkey → ccc authorized_keys (ProxyJump 의 2-hop)
+if [ -f /keys/id_rsa.pub ]; then
+    mkdir -p /home/$SSH_USER/.ssh
+    cat /keys/id_rsa.pub > /home/$SSH_USER/.ssh/authorized_keys
+    chown -R $SSH_USER:$SSH_USER /home/$SSH_USER/.ssh
+    chmod 700 /home/$SSH_USER/.ssh
+    chmod 600 /home/$SSH_USER/.ssh/authorized_keys
+    echo "[web] authorized_keys deployed — bastion 의 password-less ssh 가능"
+fi
+
 # Self-signed cert (generate once)
 if [ ! -f /etc/apache2/ssl/server.crt ]; then
     echo "[web] generating self-signed cert"
