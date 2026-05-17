@@ -17,6 +17,19 @@ if ! id "$SSH_USER" >/dev/null 2>&1; then
     echo "$SSH_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USER
 fi
 
+# secuops/W08-S1 의 'docker ps' 학생 명령 위해 ccc 를 docker group 에 추가.
+# /var/run/docker.sock 의 GID 와 일치하는 group 생성 + ccc 추가.
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+    if ! getent group docker >/dev/null 2>&1; then
+        groupadd -g "$DOCKER_GID" docker 2>/dev/null || true
+    else
+        groupmod -g "$DOCKER_GID" docker 2>/dev/null || true
+    fi
+    usermod -aG docker "$SSH_USER" 2>/dev/null || true
+    echo "[bastion] ccc → docker group (GID=$DOCKER_GID) — secuops W08 의 docker ps 가능"
+fi
+
 # ~/.ssh/config — ProxyJump aliases
 mkdir -p /home/$SSH_USER/.ssh
 cat > /home/$SSH_USER/.ssh/config <<SSHCFG
