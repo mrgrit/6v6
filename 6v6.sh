@@ -272,6 +272,10 @@ cmd_up() {
         ENV_FILES="$ENV_FILES --env-file .env.misp"
         echo "[6v6] MISP overlay 활성 (SKIP_MISP=1 로 비활성)"
     fi
+    if [ "${SKIP_SYSMON:-0}" = "0" ] && [ -f docker-compose.sysmon.yml ]; then
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.sysmon.yml"
+        echo "[6v6] sysmon-host overlay 활성 (W11 학습, SKIP_SYSMON=1 로 비활성)"
+    fi
     COMPOSE_FILES="$COMPOSE_FILES $ENV_FILES"
     docker compose $COMPOSE_FILES build
     docker compose $COMPOSE_FILES up -d

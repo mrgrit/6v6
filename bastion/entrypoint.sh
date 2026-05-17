@@ -62,6 +62,13 @@ Host 6v6-siem siem
     UserKnownHostsFile /dev/null
     ProxyJump 6v6-fw
 
+# W11 학습용 — sysmon-host (ext network, systemd 컨테이너)
+Host 6v6-sysmon-host sysmon-host
+    HostName 10.20.30.210
+    User $SSH_USER
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
 # Wazuh Dashboard (https UI, no SSH): https://siem.6v6.lab/
 #   admin / SecretPassword
 SSHCFG
