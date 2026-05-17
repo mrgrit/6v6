@@ -26,6 +26,19 @@ RUN curl -sSL https://github.com/ffuf/ffuf/releases/download/v2.1.0/ffuf_2.1.0_l
     chmod +x /usr/local/bin/ffuf && \
     rm /tmp/ffuf.tar.gz
 
+# dalfox — XSS 전용 자동 scanner (Go binary, github release)
+RUN curl -sSL https://github.com/hahwul/dalfox/releases/download/v2.9.2/dalfox_2.9.2_linux_amd64.tar.gz \
+        -o /tmp/dalfox.tar.gz && \
+    tar -xzf /tmp/dalfox.tar.gz -C /usr/local/bin dalfox && \
+    chmod +x /usr/local/bin/dalfox && \
+    rm /tmp/dalfox.tar.gz || echo "(dalfox download skipped — offline build)"
+
+# XSStrike — DOM XSS + WAF 우회 자동 (python clone + pip)
+RUN git clone --depth 1 https://github.com/s0md3v/XSStrike.git /opt/xsstrike && \
+    pip3 install --no-cache-dir -r /opt/xsstrike/requirements.txt && \
+    printf '#!/bin/bash\npython3 /opt/xsstrike/xsstrike.py "$@"\n' > /usr/local/bin/xsstrike && \
+    chmod +x /usr/local/bin/xsstrike || echo "(XSStrike install skipped)"
+
 # searchsploit (exploitdb) — github clone (ubuntu 22.04 apt 없음, kali 전용)
 RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git /opt/exploitdb && \
     ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit
