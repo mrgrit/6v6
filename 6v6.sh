@@ -285,6 +285,10 @@ cmd_up() {
         COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.sysmon.yml"
         echo "[6v6] sysmon-host overlay 활성 (W11 학습, SKIP_SYSMON=1 로 비활성)"
     fi
+    if [ "${SKIP_OLLAMA:-0}" = "0" ] && [ -f docker-compose.ollama.yml ]; then
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.ollama.yml"
+        echo "[6v6] Ollama overlay 활성 (aisec 학습, CPU inference 느림. SKIP_OLLAMA=1 로 비활성)"
+    fi
     COMPOSE_FILES="$COMPOSE_FILES $ENV_FILES"
     docker compose $COMPOSE_FILES build
     docker compose $COMPOSE_FILES up -d
