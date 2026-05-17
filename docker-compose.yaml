@@ -74,8 +74,13 @@ services:
     networks:
       ext:
         ipv4_address: 10.20.30.1
+        # 6v6-secu = 4-VM 시대 legacy alias (fw + ips 합쳐졌던 옛 secu VM 의 이름).
+        # 학생 PC 의 ~/.ssh/config 에 Host 6v6-secu 가 ProxyJump 6v6-bastion 으로
+        # 작성된 경우 bastion 안에서 6v6-secu 를 fw 로 매핑 → DNS resolve 통과.
+        aliases: [secu, 6v6-secu]
       pipe:
         ipv4_address: 10.20.31.1
+        aliases: [secu, 6v6-secu]
     ports:
       - "${PORT_HTTP:-80}:80"
       - "${PORT_HTTPS:-443}:443"
