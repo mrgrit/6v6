@@ -56,6 +56,19 @@ RUN mkdir -p /run/sshd && \
     sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
+# 6v6 vhost 매핑 — attacker 에서 host header 없이 curl http://juice.6v6.lab/...
+# 직접 가능. web (10.20.32.80) 의 Apache + ModSec reverse proxy 가 host header
+# 기반 backend (juiceshop:3000 등) 로 라우팅. siem (10.20.32.100) 는 dashboard 직접.
+RUN printf '\n# 6v6 vhost mappings (lab content compatibility)\n\
+10.20.32.80\tjuice.6v6.lab\n\
+10.20.32.80\tdvwa.6v6.lab\n\
+10.20.32.80\tneobank.6v6.lab\n\
+10.20.32.80\tgovportal.6v6.lab\n\
+10.20.32.80\tmediforum.6v6.lab\n\
+10.20.32.80\tadminconsole.6v6.lab\n\
+10.20.32.80\taicompanion.6v6.lab\n\
+10.20.32.100\tsiem.6v6.lab\n' >> /etc/hosts
+
 COPY attacker/entrypoint.sh /entrypoint.sh
 COPY attacker/motd /etc/motd
 COPY agent/subagent.py /opt/subagent.py

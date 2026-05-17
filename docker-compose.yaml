@@ -48,6 +48,18 @@ services:
       SSH_USER: ${SSH_USER:-ccc}
       SSH_PASS: ${SSH_PASS:-ccc}
       DEFAULT_GW: 10.20.30.1
+    # 6v6 vhost — attacker 에서 curl http://juice.6v6.lab/... 직접 가능하도록
+    # /etc/hosts 자동 매핑. web (10.20.32.80) 의 Apache + ModSec reverse proxy 가
+    # host header 기반 backend (juiceshop:3000 등) 로 라우팅. siem 은 dashboard 직접.
+    extra_hosts:
+      - "juice.6v6.lab:10.20.32.80"
+      - "dvwa.6v6.lab:10.20.32.80"
+      - "neobank.6v6.lab:10.20.32.80"
+      - "govportal.6v6.lab:10.20.32.80"
+      - "mediforum.6v6.lab:10.20.32.80"
+      - "adminconsole.6v6.lab:10.20.32.80"
+      - "aicompanion.6v6.lab:10.20.32.80"
+      - "siem.6v6.lab:10.20.32.100"
     volumes:
       - attacker-home:/home/ccc
     restart: unless-stopped
