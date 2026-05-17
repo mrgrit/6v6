@@ -45,6 +45,11 @@ if ! grep -q 'local.rules' /etc/suricata/suricata.yaml; then
     sed -i 's|^rule-files:|rule-files:\n  - local.rules|' /etc/suricata/suricata.yaml || true
 fi
 
+# secuops/W05-S5 (suppress/threshold.config) 동작 보장 — default 주석 해제
+sed -i 's|^# threshold-file:|threshold-file:|' /etc/suricata/suricata.yaml || true
+# 빈 threshold.config 보장 (W05 의 학생이 학습 후 채움)
+[ -f /etc/suricata/threshold.config ] || touch /etc/suricata/threshold.config
+
 # Detect interfaces
 PIPE_IFACE=$(ip -o -4 addr show | awk '$4 ~ /^10\.20\.31\./ {print $2; exit}')
 DMZ_IFACE=$(ip -o -4 addr show | awk '$4 ~ /^10\.20\.32\./ {print $2; exit}')
