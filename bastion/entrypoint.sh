@@ -11,6 +11,20 @@ echo "[bastion] setting default route via $DEFAULT_GW (fw)"
 ip route del default 2>/dev/null || true
 ip route add default via "$DEFAULT_GW" 2>/dev/null || true
 
+# ─── EG seed import — P24 266 mission 학습된 KG (graph 397 node, anchor 168, audit 327) ──
+# 컨테이너 첫 시작 시 (DB 미존재) seed 적용. 학생 환경 보존: 이미 KG 있으면 skip.
+EG_DATA_DIR=/opt/ccc-src/data
+EG_SEED_DIR=/opt/ccc-src/data/seed
+mkdir -p "$EG_DATA_DIR"
+if [ -f "$EG_SEED_DIR/bastion_graph_seed.db" ] && [ ! -f "$EG_DATA_DIR/bastion_graph.db" ]; then
+    cp "$EG_SEED_DIR/bastion_graph_seed.db" "$EG_DATA_DIR/bastion_graph.db"
+    echo "[bastion] ★ EG seed: bastion_graph.db 적용 (P24 266 mission 학습)"
+fi
+if [ -f "$EG_SEED_DIR/bastion_audit_seed.db" ] && [ ! -f "$EG_DATA_DIR/bastion_audit.db" ]; then
+    cp "$EG_SEED_DIR/bastion_audit_seed.db" "$EG_DATA_DIR/bastion_audit.db"
+    echo "[bastion] ★ EG seed: bastion_audit.db 적용"
+fi
+
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$SSH_USER"
     echo "${SSH_USER}:${SSH_PASS}" | chpasswd
