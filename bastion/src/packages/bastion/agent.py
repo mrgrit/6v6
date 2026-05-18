@@ -288,6 +288,11 @@ def _extract_shell_from_prose(text: str) -> list[str]:
     # Running:/실행: 동사 패턴
     for m in _PROSE_CMD_RE.finditer(text):
         c = m.group(1).strip().strip('`').strip()
+        # ★ cycle 7 (2026-05-18) F4: trailing 한국어 설명 strip — autopilot mission 2.
+        for _trail in (' — ', ' -- ', ' #', ' (예:', ' (확인'):
+            if _trail in c:
+                c = c.split(_trail, 1)[0].strip()
+                break
         if c and len(c) > 2 and c not in cands:
             cands.append(c)
     # 명령 prefix 가 줄 시작에 직접 등장 (가장 공격적, 마지막 우선순위)
@@ -309,6 +314,14 @@ def _extract_shell_from_prose(text: str) -> list[str]:
             '와 ', '과 ', '및 ', '또는 '
         )):
             continue
+        # ★ cycle 6 (2026-05-18) F4: trailing 한국어 설명 strip — `— ` (em-dash)
+        # 또는 ` -- ` 또는 `(...)` 가 명령 끝 에 있으면 cut. 예: "for h in ...; done
+        # — 4 호스트 hostname 응답 확인" → "for h in ...; done". autopilot 의 mission
+        # 2 finding.
+        for _trail in (' — ', ' -- ', ' #', ' (예:', ' (확인'):
+            if _trail in c:
+                c = c.split(_trail, 1)[0].strip()
+                break
         cands.append(c)
     # !cmd
     for m in _BANG_CMD_RE.finditer(text):
@@ -2389,6 +2402,30 @@ class BastionAgent:
                     "5. 분량: 3~5줄.\n"
                     + _crit_block
                 )
+            # ★ bastion-autopilot cycle 4 (2026-05-18) fix F1.5:
+            #   LLM second-pass 가 prior tool_outputs 인지 못 함 — msgs 의 history
+            #   에 tool_output 가 not always present (특히 prompt_fallback path).
+            #   _synth_prompt 에 tool_output 직접 명시 주입 — last 2 tool 의 success
+            #   + truncated output 을 prompt 의 ## 마지막 도구 실행 결과 섹션 으로.
+            _tool_block = ""
+            if all_tool_outputs:
+                _tool_lines = []
+                for _to in all_tool_outputs[-2:]:
+                    _sk = _to.get("skill", "?")
+                    _sc = _to.get("success", False)
+                    _out = (_to.get("output", "") or "")[:1500]
+                    _params = _to.get("params") or {}
+                    _cmd = _params.get("command") or _params.get("url") or ""
+                    _tool_lines.append(
+                        f"### skill={_sk} success={_sc} command=`{_cmd[:120]}`\n"
+                        f"```\n{_out}\n```"
+                    )
+                _tool_block = (
+                    "\n## 마지막 도구 실행 결과 (이 stdout 만 사용. 가짜 example 금지)\n"
+                    + "\n".join(_tool_lines) + "\n"
+                )
+            _synth_prompt = _synth_prompt + _tool_block
+
             try:
                 r = httpx.post(
                     f"{self.ollama_url}/api/chat",

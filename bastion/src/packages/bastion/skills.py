@@ -804,6 +804,13 @@ def execute_skill(name: str, params: dict[str, Any], vm_ips: dict[str, str],
             "docker images", "docker version", "docker info",
             "curl http://localhost:9100", "curl https://localhost:9100",
             "curl -s http://localhost:9100", "curl -s https://localhost:9100",
+            # ssh ProxyJump 시작점 = bastion (bastion 의 .ssh/config 에 6v6-* alias).
+            # 학생 PC 의 ssh -o ConnectTimeout=N 6v6-fw hostname 같은 명령도 bastion
+            # 안 에서 실행 가능. cycle 5 finding (Mission 2 = ProxyJump 검증).
+            "ssh 6v6-", "ssh -n 6v6-", "ssh -o ConnectTimeout",
+            "ssh -i ", "ssh -p ",
+            # bash for loop 가 ssh 6v6-* 호출 — for h in ... ssh 6v6-$h ...
+            "for h in fw", "for h in 6v6", "for vm in",
         )
         if any(_cmd_strip.startswith(p) or f" {p}" in _cmd_strip for p in _bastion_patterns):
             target = "bastion"

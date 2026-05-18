@@ -1324,8 +1324,20 @@ def run_command(ip: str, script: str, timeout: int = 60) -> dict:
     """
     if _is_local_ip(ip):
         try:
-            import subprocess as _sp
-            r = _sp.run(["bash", "-c", script], capture_output=True, text=True, timeout=timeout)
+            import subprocess as _sp, os as _os
+            # ★ bastion-autopilot cycle 8 (2026-05-18) fix F5:
+            #   uvicorn 이 root user (entrypoint default) → subprocess ssh 시 root 의
+            #   ~/.ssh/config 안 봄 → ccc 의 6v6-fw alias 무지 → root 로 시도 → Permission
+            #   denied. ccc user 로 강제 실행 (su - ccc -c) — ccc 의 .ssh/config + id_rsa
+            #   가용. 모든 local subprocess 명령 동일 적용.
+            _ssh_user = _os.getenv("SSH_USER", "ccc")
+            if _ssh_user and _ssh_user != "root":
+                # quoted command — single-quote 안 의 '" 처리
+                _esc = script.replace("'", "'\\''")
+                _cmd = ["su", "-", _ssh_user, "-c", f"bash -c '{_esc}'"]
+            else:
+                _cmd = ["bash", "-c", script]
+            r = _sp.run(_cmd, capture_output=True, text=True, timeout=timeout)
             return {
                 "exit_code": r.returncode,
                 "stdout": r.stdout,
