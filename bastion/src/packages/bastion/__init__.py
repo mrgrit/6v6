@@ -1331,12 +1331,23 @@ def run_command(ip: str, script: str, timeout: int = 60) -> dict:
             #   denied. ccc user 로 강제 실행 (su - ccc -c) — ccc 의 .ssh/config + id_rsa
             #   가용. 모든 local subprocess 명령 동일 적용.
             _ssh_user = _os.getenv("SSH_USER", "ccc")
+            # ★ bastion-autopilot cycle 3 (2026-05-18) F6: ssh 호출 시 -tt 자동 주입.
+            # web 의 sudoers `Defaults use_pty` 가 non-tty subprocess 의 sudo 차단
+            # → ssh -tt 로 force tty allocation. 학생 PC autopilot subprocess (stdin
+            # 없음) 시 안전. 모든 sudo 통한 명령 호환성.
+            _script = script
+            if " ssh " in f" {_script} " or _script.startswith("ssh "):
+                # `ssh ` 단어 가 첫 위치 또는 어떤 토큰 으로 등장 시 -tt 추가
+                import re as _re
+                _script = _re.sub(r'\bssh (?!-)', 'ssh -tt ', _script, count=1)
+                # 이미 -n 이 있으면 -tt 와 충돌 → -n 제거 (autopilot 의 stdin 부재)
+                _script = _script.replace('-n -tt ', '-tt ').replace('-tt -n ', '-tt ')
             if _ssh_user and _ssh_user != "root":
                 # quoted command — single-quote 안 의 '" 처리
-                _esc = script.replace("'", "'\\''")
+                _esc = _script.replace("'", "'\\''")
                 _cmd = ["su", "-", _ssh_user, "-c", f"bash -c '{_esc}'"]
             else:
-                _cmd = ["bash", "-c", script]
+                _cmd = ["bash", "-c", _script]
             r = _sp.run(_cmd, capture_output=True, text=True, timeout=timeout)
             return {
                 "exit_code": r.returncode,
