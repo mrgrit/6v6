@@ -31,7 +31,8 @@ RUN curl -L https://pkg.osquery.io/deb/pubkey.gpg | \
     apt-get install -y --no-install-recommends osquery && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir fastapi uvicorn[standard] httpx pydantic pyyaml
+RUN pip3 install --no-cache-dir fastapi uvicorn[standard] httpx pydantic pyyaml \
+    pandas numpy scikit-learn
 
 # 추가 분석 도구 (CCC CURRICULUM 원칙 #8 — 도구 부재 시 설치 부터)
 # secuops/W13/step2 (enrichment) — geoip-bin / whois
