@@ -2357,15 +2357,38 @@ class BastionAgent:
                     f"의도: {_intent_s}\n"
                     f"성공 기준:\n{_crit_lines}\n"
                 )
-            _synth_prompt = (
-                "위 도구 실행 결과를 바탕으로 사용자 요청에 대한 최종 답을 작성하라.\n"
-                "## 작성 규칙 (필수)\n"
-                "1. 도구 stdout 에서 인용 가능한 핵심 라인 1~2줄을 그대로 인용.\n"
-                "2. 채점 기준이 있다면 각 기준에 대해 충족/미충족 한 줄씩 표시.\n"
-                "3. 개념 설명·이론·일반론 금지. 실측 결과 기반 결론만.\n"
-                "4. 분량: 5~10줄."
-                + _crit_block
+            # 도구 실행 의 success 여부 + stdout 가용 여부 가 prompt 분기 의 핵심.
+            # bastion-autopilot cycle 1 (2026-05-18) 발견: skill_result success=false
+            # 인데 LLM 이 "출력 결과 (예상):" 같은 가짜 example 생성 (학습 가치 0 +
+            # 운영 위험). _synth_prompt 에 명시적 anti-hallucination 룰 추가.
+            _any_skill_ok = any(
+                (tr.get("success") and (tr.get("output") or "").strip())
+                for tr in (turn_traces or [])
             )
+            if _any_skill_ok:
+                _synth_prompt = (
+                    "위 도구 실행 결과를 바탕으로 사용자 요청에 대한 최종 답을 작성하라.\n"
+                    "## 작성 규칙 (필수)\n"
+                    "1. 도구 stdout 에서 인용 가능한 핵심 라인 1~2줄을 그대로 인용.\n"
+                    "2. 채점 기준이 있다면 각 기준에 대해 충족/미충족 한 줄씩 표시.\n"
+                    "3. 개념 설명·이론·일반론 금지. 실측 결과 기반 결론만.\n"
+                    "4. 분량: 5~10줄.\n"
+                    "5. **절대 금지**: 도구 stdout 에 없는 데이터/숫자/파일명/컨테이너명 등을\n"
+                    "   생성·예상·추정 으로 출력 금지. '예상', '(예상)', '~일 것입니다' 표현 금지.\n"
+                    + _crit_block
+                )
+            else:
+                # 모든 skill 실패 또는 stdout empty → 가짜 결과 생성 금지, 정직 보고.
+                _synth_prompt = (
+                    "도구 실행 이 모두 실패 또는 stdout 가 empty. **가짜 결과 생성 절대 금지.**\n"
+                    "## 작성 규칙 (필수)\n"
+                    "1. '도구 실행 실패' 정직 보고 (어느 skill 의 어느 명령 이 fail).\n"
+                    "2. 가능 한 원인 1-2 가지 추측 (target 잘못 / 권한 / network 등).\n"
+                    "3. 다음 시도 권장 (학생 또는 운영자 가 manual 시도 할 명령).\n"
+                    "4. **절대 금지**: 가짜 출력 example (`web-app-1 Running` 같은 hallucination).\n"
+                    "5. 분량: 3~5줄.\n"
+                    + _crit_block
+                )
             try:
                 r = httpx.post(
                     f"{self.ollama_url}/api/chat",

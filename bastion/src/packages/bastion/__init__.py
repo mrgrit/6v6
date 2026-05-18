@@ -777,6 +777,10 @@ INTERNAL_IPS = {
     "siem":     os.getenv("VM_SIEM_IP",     "10.20.30.100"),
     "manager":  os.getenv("VM_MANAGER_IP",  "10.20.30.200"),
     "windows":  os.getenv("VM_WINDOWS_IP",  "10.20.30.50"),
+    # bastion 자신 — docker.sock RO mount + KG DB 가용. run_command 가 _is_local_ip
+    # 확인 후 subprocess 직접 실행 (SubAgent 안 거침). shell skill 의 docker ps /
+    # curl localhost API 가 여기로 라우팅 (cycle 2 F2c fix).
+    "bastion":  os.getenv("VM_BASTION_IP",  "127.0.0.1"),
 }
 INTERNAL_SUBNET = os.getenv("VM_INTERNAL_SUBNET", "10.20.30.0/24")
 SECU_GW = INTERNAL_IPS["secu"]
