@@ -44,4 +44,75 @@
     <group>bastion_audit,config_change,</group>
   </rule>
 
+  <!-- ── Bastion lifecycle (stage 별 event, request_id correlation) ── -->
+  <rule id="100210" level="2">
+    <decoded_as>bastion-lifecycle</decoded_as>
+    <description>Bastion lifecycle: stage=$(stage) seq=$(seq) req=$(request_id)</description>
+    <group>bastion_lifecycle,</group>
+  </rule>
+
+  <!-- mission 시작 -->
+  <rule id="100211" level="3">
+    <if_sid>100210</if_sid>
+    <field name="stage">bastion.request.received</field>
+    <description>Bastion REQUEST: course=$(course) step=$(step_order) — $(user_prompt)</description>
+    <group>bastion_lifecycle,start,</group>
+  </rule>
+
+  <!-- planning stage -->
+  <rule id="100212" level="3">
+    <if_sid>100210</if_sid>
+    <field name="stage" type="pcre2">bastion\.event\.stage</field>
+    <description>Bastion stage transition: $(event) req=$(request_id)</description>
+    <group>bastion_lifecycle,plan,</group>
+  </rule>
+
+  <!-- playbook lookup decision -->
+  <rule id="100213" level="3">
+    <if_sid>100210</if_sid>
+    <field name="event">lookup_decision</field>
+    <description>Bastion KG lookup: decision=$(decision) confidence=$(confidence) req=$(request_id)</description>
+    <group>bastion_lifecycle,kg_lookup,</group>
+  </rule>
+
+  <!-- skill start (subagent 지시) -->
+  <rule id="100214" level="3">
+    <if_sid>100210</if_sid>
+    <field name="event">skill_start</field>
+    <description>Bastion → SubAgent: skill=$(skill) attempt=$(attempt) target=$(host) req=$(request_id)</description>
+    <group>bastion_lifecycle,dispatch,</group>
+  </rule>
+
+  <!-- skill result (subagent 결과) -->
+  <rule id="100215" level="3">
+    <if_sid>100210</if_sid>
+    <field name="event">skill_result</field>
+    <description>SubAgent → Bastion: skill=$(skill) success=$(success) req=$(request_id)</description>
+    <group>bastion_lifecycle,return,</group>
+  </rule>
+
+  <!-- self_verify (판정) -->
+  <rule id="100216" level="4">
+    <if_sid>100210</if_sid>
+    <field name="event">self_verify</field>
+    <description>Bastion judgment: score=$(score) req=$(request_id)</description>
+    <group>bastion_lifecycle,judgment,</group>
+  </rule>
+
+  <!-- step_retry (KG-3 Adapt) -->
+  <rule id="100217" level="5">
+    <if_sid>100210</if_sid>
+    <field name="event">step_retry</field>
+    <description>Bastion RETRY (KG-3 Adapt): attempt=$(attempt) req=$(request_id)</description>
+    <group>bastion_lifecycle,retry,adapt,</group>
+  </rule>
+
+  <!-- mission 종료 -->
+  <rule id="100218" level="3">
+    <if_sid>100210</if_sid>
+    <field name="stage">bastion.request.completed</field>
+    <description>Bastion COMPLETED: duration=$(duration_ms)ms events=$(seq) req=$(request_id)</description>
+    <group>bastion_lifecycle,complete,</group>
+  </rule>
+
 </group>
