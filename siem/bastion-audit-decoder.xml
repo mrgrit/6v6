@@ -1,18 +1,13 @@
 <!--
   Wazuh decoder for bastion audit log (syslog tag = bastion-audit, JSON payload)
-
-  Sample log line (rsyslog 가 syslog 형식으로 wrap):
-    May 19 02:00:01 bastion bastion-audit {"id": 123, "request_id": "abc...",
-      "session_id": "s1779...", "duration_ms": 1234, "course": "secuops",
-      "step_order": 5, "user_prompt": "...", "outcome": "success",
-      "model": "gpt-oss:120b", "self_hash": "..."}
+  Sample: May 19 02:05 bastion bastion-audit {"id": 328, "course": "secuops", ...}
+  Note: wazuh prematch 는 OS_Match (substring), regex escape 불필요.
 -->
 <decoder name="bastion-audit">
-  <prematch>bastion-audit </prematch>
+  <prematch>bastion-audit {</prematch>
 </decoder>
 
 <decoder name="bastion-audit-json">
   <parent>bastion-audit</parent>
-  <prematch>bastion-audit \{</prematch>
   <plugin_decoder>JSON_Decoder</plugin_decoder>
 </decoder>
