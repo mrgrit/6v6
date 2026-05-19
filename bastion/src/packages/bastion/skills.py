@@ -532,22 +532,26 @@ def execute_skill(name: str, params: dict[str, Any], vm_ips: dict[str, str],
         return {"success": True, "output": results}
 
     elif name == "scan_ports":
-        target = params.get("target", "10.20.30.80")
-        ip = _resolve_vm_ip(target, vm_ips)
+        # ★ fix-L (2026-05-18): docker exec wrapping — attacker IP placeholder fail 시
+        #   bastion → docker exec 6v6-attacker nmap 으로 자동 fallback.
+        target = params.get("target", "10.20.32.80")
+        # target 이 IP 면 그대로, 컨테이너 alias 면 _resolve_vm_ip
+        ip = target if target.replace(".", "").isdigit() else _resolve_vm_ip(target, vm_ips)
         ports = params.get("ports", "--top-ports 100")
-        attacker_ip = vm_ips.get("attacker", "")
-        # greppable output (-oG) for reliable parsing, plus normal output
-        r = run_command(attacker_ip,
-            f"nmap -sV {ip} {ports} --max-retries 1 -T4 --host-timeout 30s -oG - 2>/dev/null | grep 'Ports:' || "
-            f"nmap -sV {ip} {ports} --max-retries 1 -T4 --host-timeout 30s 2>/dev/null | grep -E '^[0-9]+/tcp'",
+        bastion_ip = vm_ips.get("bastion") or "127.0.0.1"
+        # bastion 의 docker daemon 통해 attacker 컨테이너 안에서 nmap 실행
+        nmap_cmd = f"nmap -sV {ip} {ports} --max-retries 1 -T4 --host-timeout 30s"
+        r = run_command(bastion_ip,
+            f"docker exec 6v6-attacker sh -c \"{nmap_cmd} -oG - 2>/dev/null | grep 'Ports:' || "
+            f"{nmap_cmd} 2>/dev/null | grep -E '^[0-9]+/tcp'\"",
             timeout=45)
         raw = r.get("stdout", "")
         # extract open ports summary
         open_ports = []
         for line in raw.splitlines():
             if "/open/" in line:  # greppable format
-                import re
-                for m in re.finditer(r'(\d+)/open/tcp//([^/]*)//', line):
+                import re as _re_nmap  # 함수 scope local re 충돌 회피 (shell branch 의 re.sub fail 원인)
+                for m in _re_nmap.finditer(r'(\d+)/open/tcp//([^/]*)//', line):
                     open_ports.append(f"{m.group(1)}/tcp {m.group(2)}")
             elif "/tcp" in line and "open" in line:  # normal format
                 open_ports.append(line.strip())
@@ -555,15 +559,33 @@ def execute_skill(name: str, params: dict[str, Any], vm_ips: dict[str, str],
         return {"success": r.get("exit_code") == 0, "output": summary, "target": ip, "open_count": len(open_ports)}
 
     elif name == "check_suricata":
+        # ★ fix-J (2026-05-18): docker exec wrapping — secu(10.20.30.x) placeholder 대신
+        #   docker exec 6v6-ips 호출 (bastion 의 docker socket 통해).
         lines = params.get("lines", 10)
-        ip = vm_ips.get("secu", "")
-        r = run_command(ip, f"echo '=== Suricata Status ===' && systemctl is-active suricata && echo '=== Recent Alerts ===' && tail -{lines} /var/log/suricata/eve.json 2>/dev/null | python3 -c \"import sys,json; [print(f'[{{e.get(\\\"timestamp\\\",\\\"\\\")[:19]}}] {{e.get(\\\"alert\\\",{{}}).get(\\\"signature\\\",\\\"?\\\")}} src={{e.get(\\\"src_ip\\\",\\\"?\\\")}}') for l in sys.stdin for e in [json.loads(l)] if e.get('event_type')=='alert']\" 2>/dev/null || tail -{lines} /var/log/suricata/eve.json 2>/dev/null | grep alert | tail -5", timeout=15)
-        return {"success": True, "output": r.get("stdout", "")}
+        ip = vm_ips.get("bastion") or "127.0.0.1"
+        script = (
+            f"echo '=== Suricata Process ===' && "
+            f"docker exec 6v6-ips pgrep -af suricata 2>/dev/null | head -3 && "
+            f"echo '=== Recent Alerts ===' && "
+            f"docker exec 6v6-ips sh -c \"grep -E 'event_type.:.alert' /var/log/suricata/eve.json 2>/dev/null | tail -{lines}\" "
+        )
+        r = run_command(ip, script, timeout=20)
+        return {"success": True, "output": r.get("stdout", "") or r.get("output", "")}
 
     elif name == "check_wazuh":
-        ip = vm_ips.get("siem", "")
-        r = run_command(ip, "echo '=== Wazuh Manager ===' && systemctl is-active wazuh-manager && echo '=== Agents ===' && /var/ossec/bin/agent_control -l 2>/dev/null && echo '=== Recent Alerts ===' && tail -5 /var/ossec/logs/alerts/alerts.json 2>/dev/null | head -5", timeout=15)
-        return {"success": True, "output": r.get("stdout", "")}
+        # ★ fix-J (2026-05-18): docker exec wrapping — siem(10.20.30.100) placeholder 대신
+        #   docker exec 6v6-siem.
+        ip = vm_ips.get("bastion") or "127.0.0.1"
+        script = (
+            "echo '=== Wazuh Daemons ===' && "
+            "docker exec 6v6-siem /var/ossec/bin/wazuh-control status 2>/dev/null | head -8 && "
+            "echo '=== Agents ===' && "
+            "docker exec 6v6-siem /var/ossec/bin/agent_control -lc 2>/dev/null && "
+            "echo '=== Recent Alerts (alerts.log) ===' && "
+            "docker exec 6v6-siem tail -10 /var/ossec/logs/alerts/alerts.log 2>/dev/null"
+        )
+        r = run_command(ip, script, timeout=20)
+        return {"success": True, "output": r.get("stdout", "") or r.get("output", "")}
 
     elif name == "enroll_wazuh_agent":
         target_role = params.get("target", "secu")
@@ -624,10 +646,23 @@ def execute_skill(name: str, params: dict[str, Any], vm_ips: dict[str, str],
         }
 
     elif name == "check_modsecurity":
+        # ★ fix-J (2026-05-18): docker exec wrapping — INTERNAL_IPS web=10.20.30.80 placeholder
+        #   는 bastion 에서 unreachable. 실제 web 컨테이너 는 dmz 10.20.32.80, bastion 의
+        #   docker socket 통해 docker exec 6v6-web 호출 만 정상 작동.
         lines = params.get("lines", 10)
-        ip = vm_ips.get("web", "")
-        r = run_command(ip, f"echo '=== ModSecurity Status ===' && apachectl -M 2>/dev/null | grep security && echo '=== Recent Blocks ===' && grep 'ModSecurity' /var/log/apache2/error.log 2>/dev/null | tail -{lines}", timeout=15)
-        return {"success": True, "output": r.get("stdout", "")}
+        ip = vm_ips.get("bastion") or "127.0.0.1"  # bastion 의 docker daemon
+        script = (
+            f"docker exec 6v6-web sh -c \""
+            f"echo '=== ModSecurity Status ===' && "
+            f"apachectl -M 2>/dev/null | grep -i security2 && "
+            f"echo '=== Config SecRuleEngine ===' && "
+            f"grep -i SecRuleEngine /etc/modsecurity/modsecurity.conf 2>/dev/null && "
+            f"echo '=== Recent ModSec Logs ===' && "
+            f"tail -{lines} /var/log/apache2/modsec_audit.log 2>/dev/null"
+            f"\""
+        )
+        r = run_command(ip, script, timeout=20)
+        return {"success": True, "output": r.get("stdout", "") or r.get("output", "")}
 
     elif name == "configure_nftables":
         action = params.get("action", "list")
@@ -802,6 +837,12 @@ def execute_skill(name: str, params: dict[str, Any], vm_ips: dict[str, str],
         _bastion_patterns = (
             "docker ps", "docker exec", "docker logs", "docker inspect",
             "docker images", "docker version", "docker info",
+            # ★ F14 fix (2026-05-18 reset cycle 4): df / docker network / volume 추가.
+            #   M48 의 df, M51 의 docker network ls 가 attacker 로 잘못 inference 되던 패턴.
+            "docker network", "docker volume", "docker stats", "docker top",
+            "df ", "df -h", "df -T", "du ", "du -h", "du -sh",
+            "free ", "free -m", "free -h", "uptime", "lsblk", "vmstat",
+            "ip route", "ip -br addr", "ip addr show",
             "curl http://localhost:9100", "curl https://localhost:9100",
             "curl -s http://localhost:9100", "curl -s https://localhost:9100",
             # ssh ProxyJump 시작점 = bastion (bastion 의 .ssh/config 에 6v6-* alias).
@@ -838,7 +879,8 @@ def execute_skill(name: str, params: dict[str, Any], vm_ips: dict[str, str],
         _has_iL = (" -i" in _stripped) or (" -I" in _stripped) or _stripped.endswith(" -i") or _stripped.endswith(" -I") or (" -sIL" in _stripped) or (" -sI" in _stripped)
         if exit_code == 0 and _is_curl and not _has_iL and len(out.strip()) < 60:
             # 첫 단어 'curl' 다음에 -i -L 삽입 (기존 옵션 유지)
-            retry_cmd = re.sub(r"^curl\s", "curl -i -L ", _stripped, count=1)
+            import re as _re_curl
+            retry_cmd = _re_curl.sub(r"^curl\s", "curl -i -L ", _stripped, count=1)
             r2 = run_command(ip, retry_cmd, timeout=60)
             out2 = r2.get("stdout", "") or ""
             if len(out2.strip()) > len(out.strip()):
