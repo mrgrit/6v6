@@ -39,13 +39,8 @@ fi
 # health check 합산 시 429 (No API available to connect) 발생. 5000/min 으로 영구 상향.
 API_CONF=/var/ossec/api/configuration/api.yaml
 if [ -f "$API_CONF" ] && ! grep -q "max_request_per_minute: 5000" "$API_CONF"; then
-    cat >> "$API_CONF" <<'API_RATE_EOF'
-
-# bastion lifecycle + dashboard health 다수 호출 → default 300 부족 (6v6 deploy default)
-access:
-  max_request_per_minute: 5000
-  max_login_attempts: 50
-  block_time: 30
-API_RATE_EOF
+    printf '\naccess:\n  max_request_per_minute: 5000\n  max_login_attempts: 50\n  block_time: 30\n' >> "$API_CONF"
     echo "[siem] ★ api.yaml updated — access.max_request_per_minute=5000"
+    # apid 가 이미 떠있으면 reload (cont-init 는 wazuh 시작 전이라 보통은 skip)
+    pkill -HUP -f wazuh_apid 2>/dev/null || true
 fi
