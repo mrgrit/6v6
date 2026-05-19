@@ -16,8 +16,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         netcat-openbsd ncat socat \
         python3 python3-pip git \
         vim less tmux htop \
-        ca-certificates && \
+        ca-certificates \
+        whatweb httpie ruby ruby-rubygems unzip && \
     rm -rf /var/lib/apt/lists/*
+
+# web-vuln 학습 의 핵심 추가 도구 — attacker 의 ext network 가 apt mirror 차단 가능성 있어
+# image 빌드 시 사전 설치. 학생 의 W02 lab 은 "사전 설치 확인 + 사용법 학습" 으로 회귀.
+RUN pip3 install --no-cache-dir wafw00f wapiti3
+RUN gem install --no-document wpscan || echo "(wpscan gem skipped — offline build)"
+
+# nuclei (Go binary) — github release. attacker 의 github 접근 가능 시 설치.
+RUN curl -sSL --retry 3 -L https://github.com/projectdiscovery/nuclei/releases/download/v3.3.5/nuclei_3.3.5_linux_amd64.zip \
+        -o /tmp/nuclei.zip && \
+    unzip -o /tmp/nuclei.zip -d /usr/local/bin/ nuclei && \
+    chmod +x /usr/local/bin/nuclei && \
+    rm /tmp/nuclei.zip || echo "(nuclei download skipped — offline build)"
 
 # scapy (Python pkg) + pwntools (이미) + requests / bs4
 # ffuf — apt 패키지 없음 (Ubuntu 22.04). Go binary go install (단, builder 단계 분리)
