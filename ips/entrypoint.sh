@@ -50,6 +50,13 @@ sed -i 's|^# threshold-file:|threshold-file:|' /etc/suricata/suricata.yaml || tr
 # 빈 threshold.config 보장 (W05 의 학생이 학습 후 채움)
 [ -f /etc/suricata/threshold.config ] || touch /etc/suricata/threshold.config
 
+# stats event = 333 field → wazuh JSON_Decoder 의 256 limit 초과 → "Too many fields"
+# noise (8초 주기 + alert 가치 없음) 이므로 eve-log 의 types 에서 stats: block 제거.
+if grep -q "^        - stats:" /etc/suricata/suricata.yaml; then
+    sed -i '/^        - stats:$/,/^            deltas:/d' /etc/suricata/suricata.yaml
+    echo "[ips] suricata eve-log: stats event_type disabled (wazuh JSON_Decoder 256 limit)"
+fi
+
 # Detect interfaces
 PIPE_IFACE=$(ip -o -4 addr show | awk '$4 ~ /^10\.20\.31\./ {print $2; exit}')
 DMZ_IFACE=$(ip -o -4 addr show | awk '$4 ~ /^10\.20\.32\./ {print $2; exit}')
