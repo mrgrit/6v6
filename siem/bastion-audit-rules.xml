@@ -1,0 +1,46 @@
+<!--
+  Wazuh rules for bastion audit log.
+  group "bastion_audit" — wazuh dashboard 에서 필터 가능.
+-->
+<group name="bastion_audit,syslog,">
+
+  <!-- 기본 — 모든 bastion audit (info, level 3) -->
+  <rule id="100200" level="3">
+    <decoded_as>bastion-audit</decoded_as>
+    <description>Bastion: $(course) lab=$(lab_id) step=$(step_order) — $(user_prompt)</description>
+    <group>bastion_audit,</group>
+  </rule>
+
+  <!-- Slow mission — 60s+ (KG-LLM 응답 지연 진단용) -->
+  <rule id="100201" level="5">
+    <if_sid>100200</if_sid>
+    <field name="duration_ms" type="pcre2">^[6-9]\d{4,}|^\d{6,}</field>
+    <description>Bastion SLOW: duration=$(duration_ms)ms course=$(course) prompt=$(user_prompt)</description>
+    <group>bastion_audit,slow,</group>
+  </rule>
+
+  <!-- Failed mission outcome -->
+  <rule id="100202" level="7">
+    <if_sid>100200</if_sid>
+    <field name="outcome">fail</field>
+    <description>Bastion FAIL: course=$(course) step=$(step_order) prompt=$(user_prompt)</description>
+    <group>bastion_audit,failure,</group>
+  </rule>
+
+  <!-- 자가 수정 mission (KG-3 Adapt 패턴) -->
+  <rule id="100203" level="4">
+    <if_sid>100200</if_sid>
+    <field name="user_prompt" type="pcre2">자기 수정|self-correction|이전 시도가 부족</field>
+    <description>Bastion SELF-CORRECT (KG-3 Adapt): $(user_prompt)</description>
+    <group>bastion_audit,adapt,</group>
+  </rule>
+
+  <!-- 위험 mission keyword (drop/MASQUERADE/reverse shell 등) — high alert -->
+  <rule id="100204" level="10">
+    <if_sid>100200</if_sid>
+    <field name="user_prompt" type="pcre2">drop counter|add rule|MASQUERADE|reverse shell|backdoor|payload 실행</field>
+    <description>Bastion CONFIG-CHANGE risk: $(user_prompt)</description>
+    <group>bastion_audit,config_change,</group>
+  </rule>
+
+</group>

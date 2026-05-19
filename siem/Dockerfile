@@ -23,4 +23,12 @@ COPY siem/98-start-subagent.sh /etc/cont-init.d/98-start-subagent
 COPY siem/99-start-sshd.sh /etc/cont-init.d/99-start-sshd
 RUN chmod +x /etc/cont-init.d/97-deploy-ssh-key /etc/cont-init.d/98-start-subagent /etc/cont-init.d/99-start-sshd
 
-EXPOSE 22 8002
+# Bastion audit decoder + rules (image /opt 보존, cont-init 가 volume 의 /var/ossec/etc 로 copy)
+COPY siem/bastion-audit-decoder.xml /opt/bastion-audit-decoder.xml
+COPY siem/bastion-audit-rules.xml /opt/bastion-audit-rules.xml
+
+# cont-init: bastion audit decoder/rule 강제 적용 + syslog 514/udp remote 활성
+COPY siem/96-bastion-audit-rules.sh /etc/cont-init.d/96-bastion-audit-rules
+RUN chmod +x /etc/cont-init.d/96-bastion-audit-rules
+
+EXPOSE 22 514/udp 8002

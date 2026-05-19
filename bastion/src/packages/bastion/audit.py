@@ -203,6 +203,31 @@ class AuditLog:
             row_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
             c.commit()
 
+        # ── syslog forward → wazuh (6v6 의 rsyslog 가 10.20.32.100:514 로 forward) ──
+        # bastion-audit facility (local5) JSON 1줄. wazuh decoder 가 parse.
+        try:
+            import logging, logging.handlers, json as _json
+            global _BASTION_AUDIT_LOGGER
+            if "_BASTION_AUDIT_LOGGER" not in globals():
+                lg = logging.getLogger("bastion-audit")
+                lg.setLevel(logging.INFO)
+                # local5 facility → rsyslog 의 50-bastion-audit.conf 가 wazuh 로 forward
+                h = logging.handlers.SysLogHandler(address="/dev/log",
+                                                   facility=logging.handlers.SysLogHandler.LOG_LOCAL5)
+                h.setFormatter(logging.Formatter("bastion-audit %(message)s"))
+                lg.addHandler(h); lg.propagate = False
+                _BASTION_AUDIT_LOGGER = lg
+            _BASTION_AUDIT_LOGGER.info(_json.dumps({
+                "id": row_id, "request_id": request_id, "session_id": session_id,
+                "ts_start": ts_start, "ts_end": ts_end, "duration_ms": duration_ms,
+                "course": course, "lab_id": lab_id, "step_order": step_order,
+                "user_prompt": (user_prompt or "")[:200],
+                "outcome": outcome, "model": model_used,
+                "self_hash": self_hash[:16],
+            }, ensure_ascii=False))
+        except Exception:
+            pass  # syslog 실패 = DB 저장 영향 없음 (silent fail)
+
         return {"id": row_id, "request_id": request_id,
                 "self_hash": self_hash, "prev_hash": prev_hash}
 

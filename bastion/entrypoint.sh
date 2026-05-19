@@ -134,6 +134,18 @@ cat > /etc/rsyslog.d/50-forward-siem.conf <<RSYSLOG
 *.*  @${SIEM_HOST}:514
 RSYSLOG
 
+# ── Bastion audit log → wazuh (local5 facility, separate tag 'bastion-audit') ──
+# audit.py 가 logging.handlers.SysLogHandler(LOG_LOCAL5) 로 송신.
+# wazuh decoder (local_decoder.xml) 가 "bastion-audit {json}" 패턴 parse.
+cat > /etc/rsyslog.d/51-bastion-audit.conf <<RSYSLOG_AUDIT
+# Bastion audit log → siem (wazuh) — local5 facility 만 별도 forward
+local5.*  @${SIEM_HOST}:514
+# 동시에 로컬 파일에도 저장 (디버그 + Wazuh agent 가 파일 watch 가능)
+local5.*  /var/log/bastion-audit.log
+RSYSLOG_AUDIT
+touch /var/log/bastion-audit.log
+chmod 644 /var/log/bastion-audit.log
+
 service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
 
 echo "[bastion] starting Bastion API on :9100"
