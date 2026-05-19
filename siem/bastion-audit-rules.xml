@@ -1,21 +1,22 @@
 <!--
   Wazuh rules for bastion audit log.
-  group "bastion_audit" — wazuh dashboard 에서 필터 가능.
+  JSON_Decoder 로 추출된 field 는 alert.data.{course, user_prompt, ...} 로 접근.
+  Wazuh rule template 의 $(field) 는 decoder 가 추출한 키 그대로.
 -->
 <group name="bastion_audit,syslog,">
 
   <!-- 기본 — 모든 bastion audit (info, level 3) -->
   <rule id="100200" level="3">
     <decoded_as>bastion-audit</decoded_as>
-    <description>Bastion: $(course) lab=$(lab_id) step=$(step_order) — $(user_prompt)</description>
+    <description>Bastion: course=$(course) step=$(step_order) ($(duration_ms)ms) — $(user_prompt)</description>
     <group>bastion_audit,</group>
   </rule>
 
-  <!-- Slow mission — 60s+ (KG-LLM 응답 지연 진단용) -->
+  <!-- Slow mission — 60s+ (LLM 응답 지연 진단) -->
   <rule id="100201" level="5">
     <if_sid>100200</if_sid>
     <field name="duration_ms" type="pcre2">^[6-9]\d{4,}|^\d{6,}</field>
-    <description>Bastion SLOW: duration=$(duration_ms)ms course=$(course) prompt=$(user_prompt)</description>
+    <description>Bastion SLOW: $(duration_ms)ms course=$(course) — $(user_prompt)</description>
     <group>bastion_audit,slow,</group>
   </rule>
 
@@ -23,7 +24,7 @@
   <rule id="100202" level="7">
     <if_sid>100200</if_sid>
     <field name="outcome">fail</field>
-    <description>Bastion FAIL: course=$(course) step=$(step_order) prompt=$(user_prompt)</description>
+    <description>Bastion FAIL: course=$(course) step=$(step_order) — $(user_prompt)</description>
     <group>bastion_audit,failure,</group>
   </rule>
 
@@ -35,7 +36,7 @@
     <group>bastion_audit,adapt,</group>
   </rule>
 
-  <!-- 위험 mission keyword (drop/MASQUERADE/reverse shell 등) — high alert -->
+  <!-- 위험 변경 mission (drop/MASQUERADE/reverse shell) — high alert -->
   <rule id="100204" level="10">
     <if_sid>100200</if_sid>
     <field name="user_prompt" type="pcre2">drop counter|add rule|MASQUERADE|reverse shell|backdoor|payload 실행</field>
