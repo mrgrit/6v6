@@ -203,19 +203,34 @@ class AuditLog:
             row_id = c.execute("SELECT last_insert_rowid()").fetchone()[0]
             c.commit()
 
-        # ── syslog forward → wazuh (6v6 의 rsyslog 가 10.20.32.100:514 로 forward) ──
+        # ── syslog forward → wazuh (UDP 직접, rsyslog 우회 — docker 환경에서 /dev/log 없음) ──
         # bastion-audit facility (local5) JSON 1줄. wazuh decoder 가 parse.
+        # SIEM_HOST = wazuh manager (default 10.20.32.100:514/udp).
         try:
-            import logging, logging.handlers, json as _json
+            import logging, logging.handlers, json as _json, os as _os
             global _BASTION_AUDIT_LOGGER
             if "_BASTION_AUDIT_LOGGER" not in globals():
                 lg = logging.getLogger("bastion-audit")
                 lg.setLevel(logging.INFO)
-                # local5 facility → rsyslog 의 50-bastion-audit.conf 가 wazuh 로 forward
-                h = logging.handlers.SysLogHandler(address="/dev/log",
-                                                   facility=logging.handlers.SysLogHandler.LOG_LOCAL5)
-                h.setFormatter(logging.Formatter("bastion-audit %(message)s"))
-                lg.addHandler(h); lg.propagate = False
+                siem_host = _os.environ.get("SIEM_HOST", "10.20.32.100")
+                siem_port = int(_os.environ.get("SIEM_SYSLOG_PORT", "514"))
+                # UDP 직접 송신 (rsyslog daemon 부재 환경 호환). 로컬 file fallback 도.
+                try:
+                    h = logging.handlers.SysLogHandler(address=(siem_host, siem_port),
+                                                       facility=logging.handlers.SysLogHandler.LOG_LOCAL5,
+                                                       socktype=__import__("socket").SOCK_DGRAM)
+                    h.setFormatter(logging.Formatter("bastion-audit %(message)s"))
+                    lg.addHandler(h)
+                except Exception:
+                    pass
+                # 로컬 file 도 (Wazuh agent file watch + 디버그)
+                try:
+                    fh = logging.FileHandler("/var/log/bastion-audit.log")
+                    fh.setFormatter(logging.Formatter("%(asctime)s bastion-audit %(message)s"))
+                    lg.addHandler(fh)
+                except Exception:
+                    pass
+                lg.propagate = False
                 _BASTION_AUDIT_LOGGER = lg
             _BASTION_AUDIT_LOGGER.info(_json.dumps({
                 "id": row_id, "request_id": request_id, "session_id": session_id,
