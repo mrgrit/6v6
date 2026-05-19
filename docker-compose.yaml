@@ -33,6 +33,7 @@ services:
       DEFAULT_GW: 10.20.30.1
     volumes:
       - bastion-data:/var/lib/bastion
+      - bastion-ssh-host:/var/lib/bastion/ssh-host-keys
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./keys:/keys:ro
     restart: unless-stopped
@@ -67,6 +68,7 @@ services:
       - "siem.6v6.lab:10.20.32.100"
     volumes:
       - attacker-home:/home/ccc
+      - attacker-ssh-host:/var/lib/ssh-host-keys
       - ./keys:/keys:ro
     restart: unless-stopped
 
@@ -383,3 +385,5 @@ volumes:
   wazuh-manager-queue:
   wazuh-manager-var:
   attacker-home:
+  bastion-ssh-host:
+  attacker-ssh-host:

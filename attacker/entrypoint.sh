@@ -57,6 +57,26 @@ service rsyslog restart 2>/dev/null || service rsyslog start 2>/dev/null || true
 sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
 sed -i 's|^#LogLevel.*|LogLevel INFO|' /etc/ssh/sshd_config
 
+# SSH host key 영구화 — fresh 재배포 시 학생 PC known_hosts mismatch 방지.
+# (attacker-ssh-host volume 에 보존 → 컨테이너 재생성해도 같은 host key 유지)
+SSH_HOST_KEY_DIR=/var/lib/ssh-host-keys
+mkdir -p "$SSH_HOST_KEY_DIR"
+for t in rsa ecdsa ed25519; do
+    if [ ! -f "$SSH_HOST_KEY_DIR/ssh_host_${t}_key" ]; then
+        ssh-keygen -q -t "$t" -f "$SSH_HOST_KEY_DIR/ssh_host_${t}_key" -N "" -C "attacker-$t"
+        echo "[attacker] ssh host key 생성: $t (영구 보존)"
+    fi
+    chmod 600 "$SSH_HOST_KEY_DIR/ssh_host_${t}_key"
+done
+sed -i '/^HostKey \/var\/lib\/ssh-host-keys/d' /etc/ssh/sshd_config
+{
+    echo ""
+    echo "# ── 영구 host key (attacker-ssh-host volume) ──"
+    for t in rsa ecdsa ed25519; do
+        echo "HostKey $SSH_HOST_KEY_DIR/ssh_host_${t}_key"
+    done
+} >> /etc/ssh/sshd_config
+
 # SubAgent (Manager A2A worker on :8002)
 if [ -f /opt/subagent.py ]; then
     echo "[attacker] starting SubAgent on :8002"

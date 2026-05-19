@@ -172,5 +172,26 @@ fi
 sed -i 's|^#SyslogFacility.*|SyslogFacility AUTH|' /etc/ssh/sshd_config
 sed -i 's|^#LogLevel.*|LogLevel INFO|' /etc/ssh/sshd_config
 
+# SSH host key 영구화 — fresh 재배포 시 학생 PC known_hosts mismatch 방지.
+# (bastion-ssh-host volume 에 보존 → 컨테이너 재생성해도 같은 host key 유지)
+SSH_HOST_KEY_DIR=/var/lib/bastion/ssh-host-keys
+mkdir -p "$SSH_HOST_KEY_DIR"
+for t in rsa ecdsa ed25519; do
+    if [ ! -f "$SSH_HOST_KEY_DIR/ssh_host_${t}_key" ]; then
+        ssh-keygen -q -t "$t" -f "$SSH_HOST_KEY_DIR/ssh_host_${t}_key" -N "" -C "bastion-$t"
+        echo "[bastion] ssh host key 생성: $t (영구 보존)"
+    fi
+    chmod 600 "$SSH_HOST_KEY_DIR/ssh_host_${t}_key"
+done
+# sshd_config 의 HostKey directive 를 volume 경로로 override
+sed -i '/^HostKey \/var\/lib\/bastion/d' /etc/ssh/sshd_config
+{
+    echo ""
+    echo "# ── 영구 host key (bastion-ssh-host volume) ──"
+    for t in rsa ecdsa ed25519; do
+        echo "HostKey $SSH_HOST_KEY_DIR/ssh_host_${t}_key"
+    done
+} >> /etc/ssh/sshd_config
+
 echo "[bastion] starting sshd"
 exec /usr/sbin/sshd -D -e
