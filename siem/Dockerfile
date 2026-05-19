@@ -29,6 +29,8 @@ COPY siem/bastion-audit-rules.xml /opt/bastion-audit-rules.xml
 
 # cont-init: bastion audit decoder/rule 강제 적용 + syslog 514/udp remote 활성
 COPY siem/96-bastion-audit-rules.sh /etc/cont-init.d/96-bastion-audit-rules
-RUN chmod +x /etc/cont-init.d/96-bastion-audit-rules
+# cont-init: Wazuh API rate limit 5000/min (default 300 부족 → No API available)
+COPY siem/95-api-rate-limit.sh /etc/cont-init.d/95-api-rate-limit
+RUN chmod +x /etc/cont-init.d/96-bastion-audit-rules /etc/cont-init.d/95-api-rate-limit
 
 EXPOSE 22 514/udp 8002
