@@ -34,3 +34,18 @@ if [ -f "$OSSEC_CONF" ] && ! grep -q "bastion-audit-syslog" "$OSSEC_CONF"; then
   </remote>' "$OSSEC_CONF" 2>/dev/null || true
     echo "[siem] ★ ossec.conf updated — syslog remote :514/udp from 10.20.0.0/16"
 fi
+
+# Wazuh API rate limit 상향 — default 300/min 은 bastion lifecycle alert + dashboard
+# health check 합산 시 429 (No API available to connect) 발생. 5000/min 으로 영구 상향.
+API_CONF=/var/ossec/api/configuration/api.yaml
+if [ -f "$API_CONF" ] && ! grep -q "max_request_per_minute: 5000" "$API_CONF"; then
+    cat >> "$API_CONF" <<'API_RATE_EOF'
+
+# bastion lifecycle + dashboard health 다수 호출 → default 300 부족 (6v6 deploy default)
+access:
+  max_request_per_minute: 5000
+  max_login_attempts: 50
+  block_time: 30
+API_RATE_EOF
+    echo "[siem] ★ api.yaml updated — access.max_request_per_minute=5000"
+fi
