@@ -31,6 +31,16 @@ services:
       LLM_MANAGER_MODEL: ${LLM_MANAGER_MODEL:-gemma3:4b}
       LLM_SUBAGENT_MODEL: ${LLM_SUBAGENT_MODEL:-gemma3:4b}
       DEFAULT_GW: 10.20.30.1
+    # bastion 도 ext network 라 vhost 모두 fw (10.20.30.1) 의 HAProxy 경유 필요.
+    extra_hosts:
+      - "juice.6v6.lab:10.20.30.1"
+      - "dvwa.6v6.lab:10.20.30.1"
+      - "neobank.6v6.lab:10.20.30.1"
+      - "govportal.6v6.lab:10.20.30.1"
+      - "mediforum.6v6.lab:10.20.30.1"
+      - "adminconsole.6v6.lab:10.20.30.1"
+      - "aicompanion.6v6.lab:10.20.30.1"
+      - "siem.6v6.lab:10.20.30.1"
     volumes:
       - bastion-data:/var/lib/bastion
       - bastion-ssh-host:/var/lib/bastion/ssh-host-keys
@@ -58,14 +68,16 @@ services:
     # /etc/hosts 자동 매핑. web (10.20.32.80) 의 Apache + ModSec reverse proxy 가
     # host header 기반 backend (juiceshop:3000 등) 로 라우팅. siem 은 dashboard 직접.
     extra_hosts:
-      - "juice.6v6.lab:10.20.32.80"
-      - "dvwa.6v6.lab:10.20.32.80"
-      - "neobank.6v6.lab:10.20.32.80"
-      - "govportal.6v6.lab:10.20.32.80"
-      - "mediforum.6v6.lab:10.20.32.80"
-      - "adminconsole.6v6.lab:10.20.32.80"
-      - "aicompanion.6v6.lab:10.20.32.80"
-      - "siem.6v6.lab:10.20.32.100"
+      # ext network 의 attacker 는 dmz (10.20.32/24) 에 직접 TCP 안 됨.
+      # vhost 모두 fw (10.20.30.1) 의 HAProxy 로 routing → host header 기반 backend 선택.
+      - "juice.6v6.lab:10.20.30.1"
+      - "dvwa.6v6.lab:10.20.30.1"
+      - "neobank.6v6.lab:10.20.30.1"
+      - "govportal.6v6.lab:10.20.30.1"
+      - "mediforum.6v6.lab:10.20.30.1"
+      - "adminconsole.6v6.lab:10.20.30.1"
+      - "aicompanion.6v6.lab:10.20.30.1"
+      - "siem.6v6.lab:10.20.30.1"
     volumes:
       - attacker-home:/home/ccc
       - attacker-ssh-host:/var/lib/ssh-host-keys
