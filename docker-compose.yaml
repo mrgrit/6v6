@@ -28,8 +28,10 @@ services:
       # aisec 89 step 의 /chat + /kg/* endpoint 활성화 — Ollama 외부 server (0.109).
       # 빈 문자열 이면 stub fallback (/health only).
       LLM_BASE_URL: ${LLM_BASE_URL:-http://192.168.0.109:11434}
-      LLM_MANAGER_MODEL: ${LLM_MANAGER_MODEL:-gemma3:4b}
-      LLM_SUBAGENT_MODEL: ${LLM_SUBAGENT_MODEL:-gemma3:4b}
+      # ★ .env 가 single source of truth — fallback default 제거 (잘못된 model 사용 방지).
+      # .env 에 LLM_MANAGER_MODEL / LLM_SUBAGENT_MODEL 미설정 시 빈 문자열 → bastion startup 실패 → 즉시 인지.
+      LLM_MANAGER_MODEL: ${LLM_MANAGER_MODEL}
+      LLM_SUBAGENT_MODEL: ${LLM_SUBAGENT_MODEL}
       DEFAULT_GW: 10.20.30.1
     # bastion 도 ext network 라 vhost 모두 fw (10.20.30.1) 의 HAProxy 경유 필요.
     extra_hosts:
