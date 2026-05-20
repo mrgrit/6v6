@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip git \
         vim less tmux htop \
         ca-certificates \
-        whatweb httpie ruby ruby-rubygems unzip && \
+        whatweb httpie ruby ruby-rubygems unzip \
+        sshpass yara && \
     rm -rf /var/lib/apt/lists/*
 
 # web-vuln 학습 의 핵심 추가 도구 — attacker 의 ext network 가 apt mirror 차단 가능성 있어
