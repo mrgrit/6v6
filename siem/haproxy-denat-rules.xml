@@ -1,0 +1,12 @@
+<group name="haproxy,denat,6v6,">
+  <rule id="100250" level="3">
+    <decoded_as>haproxy-denat</decoded_as>
+    <description>HAProxy(fw) access — de-NAT 원본 client IP $(srcip)</description>
+  </rule>
+  <rule id="100251" level="6">
+    <if_sid>100250</if_sid>
+    <match>UNION|SELECT|select|script|etc/passwd|sqlmap|../</match>
+    <description>HAProxy(fw): 웹 공격 의심 원본 IP $(srcip) (de-NAT)</description>
+    <group>web_attack,attack,</group>
+  </rule>
+</group>

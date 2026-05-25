@@ -1,0 +1,11 @@
+<!-- HAProxy(fw) de-NAT decoder — NAT 이전 원본 client IP 추출 (6v6 결함수정 2026-05-25).
+     HAProxy syslog 에 hostname 없어 program_name 미추출 → frontend명 'http_in' 리터럴 prematch.
+     httplog: <clientip>:<port> [<ts>] http_in <backend>/<server> ... -->
+<decoder name="haproxy-denat">
+  <prematch> http_in </prematch>
+</decoder>
+<decoder name="haproxy-denat-fields">
+  <parent>haproxy-denat</parent>
+  <regex>(\d+.\d+.\d+.\d+):\d+ \S+ http_in</regex>
+  <order>srcip</order>
+</decoder>
