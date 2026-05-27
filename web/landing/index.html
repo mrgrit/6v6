@@ -23,6 +23,7 @@ a.card .meta { color: var(--muted); font-size: 0.86em; display: block; margin-to
 .tag.defense { background: #d1fae5; color: #047857; }
 .tag.mgmt { background: #dbeafe; color: #1d4ed8; }
 .tag.ai { background: #f3e8ff; color: #7c3aed; }
+.tag.edu { background: #cffafe; color: #0e7490; }
 pre { background: #1e293b; color: #e2e8f0; padding: 14px 18px; border-radius: 8px; overflow-x: auto; font-size: 0.88em; }
 code { background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-size: 0.92em; }
 /* pre 내부의 code 는 배경/색 상속으로 가독성 확보 (외부 inline code 와 분리) */
@@ -45,7 +46,7 @@ th { background: #f1f5f9; }
 
 <h2>취약 웹 7개 (학습용)</h2>
 <p class="muted">학생 PC <code>/etc/hosts</code> 에 다음 한 줄 추가:
-<code>&lt;VM_IP&gt; 6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab</code></p>
+<code>&lt;VM_IP&gt; 6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab</code></p>
 <div class="grid">
   <a class="card" href="http://juice.6v6.lab/"><span class="tag attack">취약</span>OWASP Juice Shop<span class="meta">juice.6v6.lab — 종합 OWASP Top 10</span></a>
   <a class="card" href="http://dvwa.6v6.lab/"><span class="tag attack">취약</span>DVWA<span class="meta">dvwa.6v6.lab — Damn Vulnerable Web App</span></a>
@@ -72,6 +73,15 @@ th { background: #f1f5f9; }
   </a>
 </div>
 <p class="muted">위 도메인 모두 web 컨테이너의 Apache + ModSecurity 를 통과하여 백엔드로 reverse proxy. 직접 IP:port 접근도 그대로 살아있음 (관리/디버그용).</p>
+
+<h2>보안장비 교육 콘솔 (secuops-easy 특강)</h2>
+<p class="muted">방화벽·IPS·WAF 를 장비형 웹 콘솔로 직접 다루는 입문 특강. 폼 조작이 만드는 실제 명령(<code>nft</code> / Suricata rule / SecRule)을 미리보기로 보여준 뒤 적용한다. (fw 의 HAProxy 가 Host 헤더로 라우팅 — 위 hosts 한 줄에 세 이름 포함됨)</p>
+<div class="grid">
+  <a class="card" href="http://fw-gui.6v6.lab/"><span class="tag edu">교육</span>방화벽 콘솔 (nftables)<span class="meta">fw-gui.6v6.lab — 룰 / NAT / conntrack / 로그 / SIEM + 침해대응 시나리오 10</span></a>
+  <a class="card" href="http://ips-gui.6v6.lab/"><span class="tag edu">교육</span>IPS 콘솔 (Suricata)<span class="meta">ips-gui.6v6.lab — 탐지룰 구조·작성 / eve.json / SIEM + 침해대응 시나리오 30</span></a>
+  <a class="card" href="http://waf-gui.6v6.lab/"><span class="tag edu">교육</span>WAF 콘솔 (ModSecurity)<span class="meta">waf-gui.6v6.lab — SecRule 작성 / CRS / audit 분석 / SIEM + 침해대응 시나리오 30</span></a>
+</div>
+<p class="muted">교안·실습(6주)은 CCC 6v6 Training 메뉴의 <strong>secuops-easy</strong> 과목. 콘솔의 모든 동작은 적용 전 미리보기/문법검사를 거쳐 안전하게 연습할 수 있다.</p>
 
 <h2>로그 통합 — Wazuh agent + syslog 두 패러다임</h2>
 <table>
