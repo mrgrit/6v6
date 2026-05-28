@@ -1,0 +1,26 @@
+# 6v6 Windows 엔드포인트 — tiny11, KVM. 6v6-dmz 10.20.32.60. oem 자동계측(Sysmon+Wazuh→10.20.32.100).
+services:
+  win-endpoint:
+    image: dockurr/windows
+    container_name: 6v6-win
+    environment:
+      VERSION: "tiny11"
+      RAM_SIZE: "4G"
+      CPU_CORES: "2"
+      DISK_SIZE: "48G"
+      USERNAME: "ccc"
+      PASSWORD: "ccc"
+    devices: [ "/dev/kvm", "/dev/net/tun" ]
+    cap_add: [ "NET_ADMIN" ]
+    stop_grace_period: 2m
+    restart: unless-stopped
+    volumes:
+      - "./win-storage:/storage"
+      - "./win-oem:/oem"
+      - "./win-shared:/data"
+    networks:
+      6v6-dmz:
+        ipv4_address: 10.20.32.60
+    ports: [ "8006:8006", "3389:3389" ]
+networks:
+  6v6-dmz: { external: true, name: 6v6-dmz }
