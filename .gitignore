@@ -18,3 +18,8 @@ keys/id_rsa.pub
 
 # MISP overlay env (학생 환경마다 다른 password)
 .env.misp
+
+# Windows endpoint — dockurr/windows 가 만드는 큰 볼륨 (디스크 이미지 / 다운로드 ISO / 공유 폴더)
+# install.bat 만 git 추적, 디스크·공유 폴더는 학생 환경 전용
+win-storage/
+win-shared/

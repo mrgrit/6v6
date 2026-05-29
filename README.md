@@ -102,6 +102,16 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 | 6v6-attacker | 10.20.30.202 | nmap, hydra, sqlmap, nikto + rsyslog forward |
 | 6v6-portal | 10.20.30.50 | 관리 대시보드 (FastAPI + HTMX) |
 
+### 옵션 — Windows 엔드포인트 (14번째 컨테이너)
+
+| 컨테이너 | IP | 역할 |
+|----------|-----|------|
+| 6v6-win | 10.20.32.60 (dmz) | Windows 11 tiny11 사용자 PC — Sysmon + Wazuh agent + OpenSSH 자동계측 |
+
+배포 방법: `docker compose -f docker-compose.windows.yml up -d` (본 스택 가동 후).
+자세히는 `WINDOWS-ENDPOINT.md`. 첫 부팅 시 30-60분 (Windows ISO 다운로드 + OEM 자동설치).
+RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만.
+
 ## 학생 PC 접속 — 시스템별 가이드
 
 전제: VM IP 는 `bash 6v6.sh status` 로 확인. 아래 `<VM_IP>` 자리에 실제 IP 대체.
