@@ -38,10 +38,10 @@ bastion + attacker 는 **syslog 패러다임** (rsyslog 가 raw forward, manager
 
 | 등급 | CPU | RAM | Disk | 비고 |
 |------|-----|-----|------|------|
-| 최소 (Windows 제외) | 4 vCPU | 6 GB | 30 GB | 13 컨테이너 (`bash 6v6.sh up`) |
-| 권장 (Windows 제외) | 4 vCPU | 8 GB | 40 GB | + attacker 풀 도구 |
-| 최소 (Windows 포함) | 4 vCPU + VT-x | 16 GB | 80 GB | + `6v6-win` (Windows 11 tiny11 + 4G + 50G) |
-| 권장 (Windows 포함) | 6 vCPU + VT-x | 24 GB | 100 GB | 여유롭게 학습 진행 |
+| 최소 (Windows 제외) | 4 vCPU | 6 GB | 100 GB | 13 컨테이너 (`bash 6v6.sh up`) |
+| 권장 (Windows 제외) | 4 vCPU | 8 GB | 120 GB | + attacker 풀 도구 |
+| 최소 (Windows 포함) | 4 vCPU + VT-x | 16 GB | 150 GB | + `6v6-win` (Windows 11 tiny11 + 4G + 50G) |
+| 권장 (Windows 포함) | 6 vCPU + VT-x | 24 GB | 200 GB | 여유롭게 학습 진행 |
 
 > Windows 포함 시 추가 요구: **`/dev/kvm` 접근 가능** (VT-x/AMD-V BIOS 활성 + `kvm_intel`
 > 또는 `kvm_amd` 커널 모듈 로드). 학생 user 가 `kvm` 그룹 멤버여야 함 (`sudo usermod -aG kvm $USER`).
