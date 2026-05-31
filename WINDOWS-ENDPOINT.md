@@ -21,19 +21,36 @@
 | 디스크 | 추가 50G+ (Windows 디스크 이미지 + ISO 다운로드) |
 | 첫 부팅 시간 | Windows 11 ISO 다운로드 + 자동설치 — **20-60분** |
 
-## 배포 (3 단계)
+## 배포 — 두 가지 방법
+
+### 방법 A — 본 스택 가동 시 같이 (추천)
 
 ```bash
-# ① 본체 6v6 스택이 먼저 가동되어 있어야 함 (6v6-dmz 네트워크가 만들어져 있어야 함)
+# 한 줄로 13 + Windows 까지 — up 시작 전 /dev/kvm·권한·RAM 사전검사
+bash 6v6.sh up --with-windows
+```
+
+### 방법 B — 본 스택 가동 후 따로 (학습 중간 추가)
+
+```bash
+# ① 본체 6v6 스택이 먼저 가동되어 있어야 함 (6v6-dmz 네트워크 생성)
 bash 6v6.sh up
 
-# ② Windows 컨테이너 기동 — 첫 부팅 시 ISO 다운로드+무인설치+oem 자동
-docker compose -f docker-compose.windows.yml up -d
+# ② Windows 컨테이너 기동 — KVM 사전검사 + ISO 다운로드/무인설치/OEM 자동
+bash 6v6.sh windows up
 
 # ③ 첫 부팅 진행 모니터링 (웹뷰어로 OOBE 진행 확인)
 #    브라우저: http://<호스트IP>:8006
 #    OOBE 끝나면 자동으로 install.bat 가 실행되어 Sysmon/Wazuh/OpenSSH 설치
+#    또는: bash 6v6.sh windows status  /  bash 6v6.sh windows logs
+
+# ④ 후속 관리
+bash 6v6.sh windows down       # Windows 만 중단 (본 스택 유지)
+bash 6v6.sh windows destroy    # compose down -v (win-storage/ 는 별도 삭제)
 ```
+
+> 직접 호출도 가능 (fallback): `docker compose -f docker-compose.windows.yml up -d`.
+> `bash 6v6.sh windows up` 는 그 위에 KVM 사전검사 + 진행 안내를 얹은 래퍼.
 
 ## 검증 (2026-05-28 실측)
 

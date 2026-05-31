@@ -38,8 +38,14 @@ bastion + attacker 는 **syslog 패러다임** (rsyslog 가 raw forward, manager
 
 | 등급 | CPU | RAM | Disk | 비고 |
 |------|-----|-----|------|------|
-| 최소 | 4 vCPU | 6 GB | 30 GB | 취약 웹 7 + Wazuh manager |
-| 권장 | 4 vCPU | 8 GB | 40 GB | + attacker 풀 도구 |
+| 최소 (Windows 제외) | 4 vCPU | 6 GB | 30 GB | 13 컨테이너 (`bash 6v6.sh up`) |
+| 권장 (Windows 제외) | 4 vCPU | 8 GB | 40 GB | + attacker 풀 도구 |
+| 최소 (Windows 포함) | 4 vCPU + VT-x | 16 GB | 80 GB | + `6v6-win` (Windows 11 tiny11 + 4G + 50G) |
+| 권장 (Windows 포함) | 6 vCPU + VT-x | 24 GB | 100 GB | 여유롭게 학습 진행 |
+
+> Windows 포함 시 추가 요구: **`/dev/kvm` 접근 가능** (VT-x/AMD-V BIOS 활성 + `kvm_intel`
+> 또는 `kvm_amd` 커널 모듈 로드). 학생 user 가 `kvm` 그룹 멤버여야 함 (`sudo usermod -aG kvm $USER`).
+> `bash 6v6.sh up --with-windows` 가 시작 전에 자동 검사한다.
 
 ## 빠른 시작 (리눅스만 설치된 새 VM 기준)
 
@@ -57,11 +63,17 @@ newgrp docker
 # 3) 환경 설정
 cp .env.example .env        # LLM_BASE_URL 만 옵션 (aicompanion 은 mock 으로 동작 가능)
 
-# 4) 기동
-bash 6v6.sh up              # 첫 빌드 8~12분 (Wazuh manager + 7 vuln 사이트 포함)
+# 4) 기동 — 둘 중 하나 선택
+bash 6v6.sh up                     # (A) 13 컨테이너만 (첫 빌드 8~12분, Windows 제외)
+bash 6v6.sh up --with-windows      # (B) 14 컨테이너 (+ Windows tiny11; 추가 30-60분 첫 부팅)
+
 bash 6v6.sh smoke           # 헬스 + Wazuh agent 등록 검증
 bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 ```
+
+> **Windows 옵션 (B)** 은 KVM 가속 필수 — `bash 6v6.sh up --with-windows` 가 먼저
+> `/dev/kvm` 존재·권한·가용 RAM 을 검사하고 실패 시 친절히 안내한다.
+> Windows 만 따로 끄려면: `bash 6v6.sh windows down`. 다시 켜기: `bash 6v6.sh windows up`.
 
 `6v6.sh install` 이 자동 설치하는 항목:
 - Docker Engine + CLI + containerd
@@ -108,9 +120,21 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 |----------|-----|------|
 | 6v6-win | 10.20.32.60 (dmz) | Windows 11 tiny11 사용자 PC — Sysmon + Wazuh agent + OpenSSH 자동계측 |
 
-배포 방법: `docker compose -f docker-compose.windows.yml up -d` (본 스택 가동 후).
+배포 방법 (두 가지 동등):
+
+```bash
+# (1) 본 스택 가동 시 같이 띄움 — 추천
+bash 6v6.sh up --with-windows
+
+# (2) 본 스택 가동 후 따로 — 학습 중간에 켜고 싶을 때
+bash 6v6.sh windows up     # = docker compose -f docker-compose.windows.yml up -d
+bash 6v6.sh windows status # 부팅 진행 / OEM 완료 여부 (win-shared/OEM_DONE.txt)
+bash 6v6.sh windows down   # Windows 만 중단 (본 스택 유지)
+bash 6v6.sh windows logs   # 부팅·OEM 진행 로그 follow
+```
+
 자세히는 `WINDOWS-ENDPOINT.md`. 첫 부팅 시 30-60분 (Windows ISO 다운로드 + OEM 자동설치).
-RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만.
+RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만 (`up --with-windows` 가 사전검사).
 
 ## 학생 PC 접속 — 시스템별 가이드
 
@@ -268,12 +292,20 @@ docker exec 6v6-siem grep -i sqli /var/ossec/logs/alerts/alerts.json | tail
 ## 명령어
 
 ```bash
-bash 6v6.sh up        # 빌드 + 기동
-bash 6v6.sh smoke     # 외부 노출 포트 + Wazuh agent 등록 + 컨테이너 헬스
-bash 6v6.sh status    # 컨테이너 상태 + 접속 안내
-bash 6v6.sh logs <svc>
-bash 6v6.sh down
-bash 6v6.sh destroy   # 컨테이너 + 볼륨 + 이미지 모두 삭제
+bash 6v6.sh up                       # 13 컨테이너 빌드 + 기동
+bash 6v6.sh up --with-windows        # 14 컨테이너 (+ Windows tiny11; KVM 사전검사)
+bash 6v6.sh smoke                    # 외부 노출 포트 + Wazuh agent 등록 + 컨테이너 헬스
+bash 6v6.sh status                   # 컨테이너 상태 + 접속 안내 (Windows 포함)
+bash 6v6.sh logs <svc>               # 컨테이너 로그 follow
+bash 6v6.sh down                     # 중단 (Windows 도 같이 down, 볼륨 보존)
+bash 6v6.sh destroy                  # 컨테이너 + 볼륨 + 이미지 모두 삭제
+
+# Windows 엔드포인트 후속 관리 (base 가동 후 별도 옵션)
+bash 6v6.sh windows up               # Windows 만 시작 (KVM 사전검사)
+bash 6v6.sh windows status           # 부팅 진행 / OEM 완료 여부
+bash 6v6.sh windows down             # Windows 만 중단
+bash 6v6.sh windows destroy          # Windows compose down -v (win-storage/ 는 별도 삭제 필요)
+bash 6v6.sh windows logs             # 부팅·OEM 진행 로그
 ```
 
 ## 300B 와의 차이점

@@ -260,12 +260,22 @@ cmd_setup_forward() {
 }
 
 cmd_up() {
+    # 플래그 파싱 — --with-windows 또는 WITH_WINDOWS=1 환경변수
+    local with_windows=0
+    for arg in "$@"; do
+        case "$arg" in
+            --with-windows|--windows) with_windows=1 ;;
+        esac
+    done
+    [ "${WITH_WINDOWS:-0}" = "1" ] && with_windows=1
+
     cmd_check_docker
     cmd_check_kernel
     ensure_env
     ensure_ssh_keys
     ensure_opencti_env || true   # OpenCTI overlay 활성화 시점에 필요
     ensure_misp_env || true       # MISP overlay 활성화 시점에 필요
+    [ "$with_windows" = "1" ] && cmd_check_kvm
     echo "[6v6] docker compose build + up — first run downloads ~15 GB of images,"
     echo "      build + start takes 20-30 min (Wazuh + 7 vuln + OpenCTI 20 + MISP 5)."
     # overlay 는 SKIP_OPENCTI=1 / SKIP_MISP=1 로 비활성. 자원 적은 학생 환경.
@@ -305,6 +315,62 @@ cmd_up() {
         echo "[6v6] starting Manager + SubAgent layer (SKIP_AGENTS=1 로 skip 가능)..."
         bash agent/setup-agents.sh
     fi
+
+    # Windows 엔드포인트 (옵션 — --with-windows 또는 WITH_WINDOWS=1)
+    if [ "$with_windows" = "1" ]; then
+        echo
+        echo "[6v6] starting Windows endpoint (6v6-win, dmz 10.20.32.60)..."
+        echo "      first boot 30-60 min — Windows ISO 다운로드 + 무인설치 + Sysmon/Wazuh/OpenSSH"
+        echo "      진행 확인: http://<VM_IP>:8006  /  완료 표식: win-shared/OEM_DONE.txt"
+        docker compose -f docker-compose.windows.yml up -d
+    fi
+}
+
+cmd_check_kvm() {
+    if [ ! -e /dev/kvm ]; then
+        echo "[6v6] X /dev/kvm 없음 — Windows 엔드포인트는 KVM 가속이 필요합니다."
+        echo "      1) BIOS/UEFI 에서 가상화 (VT-x / AMD-V) 활성화"
+        echo "      2) sudo apt install -y qemu-kvm"
+        echo "      3) sudo modprobe kvm_intel  (또는 kvm_amd)"
+        exit 1
+    fi
+    if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+        echo "[6v6] WARN: /dev/kvm 권한 없음 (현재 user). Windows 컨테이너 시작 실패할 수 있음."
+        echo "      sudo usermod -aG kvm \$USER && newgrp kvm"
+    fi
+    local ram_avail
+    ram_avail=$(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+    if [ "${ram_avail:-0}" -lt 5 ]; then
+        echo "[6v6] WARN: 가용 RAM ${ram_avail}G — Windows 4G + 6v6 본 스택과 빠듯. swap 또는 컨테이너 일부 down 권장."
+    fi
+}
+
+cmd_windows() {
+    # Windows 엔드포인트 후속 관리 — up/down/status/logs
+    [ -f docker-compose.windows.yml ] || { echo "[6v6] docker-compose.windows.yml 없음"; exit 1; }
+    local sub="${1:-status}"
+    case "$sub" in
+        up)
+            cmd_check_docker
+            cmd_check_kvm
+            docker compose -f docker-compose.windows.yml up -d
+            echo "[6v6] 진행: http://$(vm_ip):8006  /  완료 표식: win-shared/OEM_DONE.txt"
+            ;;
+        down)    docker compose -f docker-compose.windows.yml down ;;
+        destroy) docker compose -f docker-compose.windows.yml down -v
+                 echo "[6v6] win-storage/ win-shared/ 디렉토리는 별도 삭제 (디스크 이미지 보존)" ;;
+        status)
+            if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
+                docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' --filter name=^6v6-win$
+                [ -f win-shared/OEM_DONE.txt ] && echo "[6v6] OEM 완료 (Sysmon + Wazuh agent + OpenSSH 설치됨)" \
+                                              || echo "[6v6] OEM 진행 중 — http://$(vm_ip):8006 에서 부팅 확인"
+            else
+                echo "[6v6] 6v6-win 미가동 — 'bash 6v6.sh windows up' 으로 시작"
+            fi
+            ;;
+        logs)    docker compose -f docker-compose.windows.yml logs -f --tail=100 ;;
+        *) echo "Usage: bash 6v6.sh windows {up|down|destroy|status|logs}"; exit 1 ;;
+    esac
 }
 
 cmd_agents() {
@@ -314,12 +380,17 @@ cmd_agents() {
 }
 
 cmd_down() {
+    [ -f docker-compose.windows.yml ] && \
+        docker compose -f docker-compose.windows.yml down 2>/dev/null || true
     docker compose down
 }
 
 cmd_destroy() {
+    [ -f docker-compose.windows.yml ] && \
+        docker compose -f docker-compose.windows.yml down -v 2>/dev/null || true
     docker compose down -v --rmi local
     echo "[6v6] containers + volumes + built images all removed."
+    echo "      (Windows: win-storage/ win-shared/ 디렉토리는 보존 — 수동 삭제 필요)"
 }
 
 cmd_logs() {
@@ -341,6 +412,10 @@ cmd_status() {
     echo "================================================================"
     echo
     docker compose ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+    # Windows 엔드포인트 (옵션) — base compose 와 분리돼 있어 별도로 보여줌
+    if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
+        docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' --filter name=^6v6-win$ | tail -n +2
+    fi
     echo
     echo "--- Browser access (all via Apache vhosts) --------------------"
     echo "  http://6v6.lab/              Landing page (or http://$IP/)"
@@ -486,36 +561,41 @@ Usage: bash 6v6.sh <command>
 
   install   auto-install docker + compose + helpers (Debian/Ubuntu)
             -> first time only. Re-login or 'newgrp docker' after.
-  up        build + start (with docker pre-flight check)
-  down      stop containers (volumes preserved)
+  up [--with-windows]  build + start. --with-windows 또는 WITH_WINDOWS=1
+                       추가 시 6v6-win (Windows 11 tiny11, dmz 10.20.32.60)
+                       도 같이 기동 (KVM 필요, 첫 부팅 30-60분).
+  down      stop containers (volumes preserved). windows 도 같이 down.
   destroy   remove containers + volumes + images
-  status    container status + access info
+  status    container status + access info (windows 포함)
   smoke     external ports + container + Wazuh + SSH health checks
   logs <svc>  follow container logs
+  windows {up|down|destroy|status|logs}
+            Windows 엔드포인트 후속 관리 (base 가동 후 별도 옵션)
 
 Quick start (fresh Linux VM):
-  bash 6v6.sh install     # auto-install docker + helpers
-  newgrp docker           # or open new terminal
-  bash 6v6.sh up          # start 6v6 environment (포함: Manager + SubAgent)
-                          # SKIP_AGENTS=1 환경변수로 agent 가동 생략
-  bash 6v6.sh agents      # agent layer 만 갱신 (컨테이너 유지)
-  bash 6v6.sh status      # show access info
-  bash 6v6.sh smoke       # health check
+  bash 6v6.sh install                # auto-install docker + helpers
+  newgrp docker                      # or open new terminal
+  bash 6v6.sh up                     # 13 컨테이너 (Windows 제외)
+  bash 6v6.sh up --with-windows      # 14 컨테이너 (+ Windows tiny11)
+  bash 6v6.sh status                 # show access info
+  bash 6v6.sh smoke                  # health check
 
 Services: bastion / secu / web / juiceshop / dvwa / neobank / govportal /
           mediforum / adminconsole / aicompanion / siem / attacker / portal
+Optional: 6v6-win (Windows 11 tiny11 사용자 PC) — --with-windows
 HELP
 }
 
 case "${1:-help}" in
     install)  cmd_install ;;
-    up)       cmd_up ;;
+    up)       shift; cmd_up "$@" ;;
     down)     cmd_down ;;
     destroy)  cmd_destroy ;;
     status)   cmd_status ;;
     smoke)    cmd_smoke ;;
     logs)     shift; cmd_logs "$@" ;;
     agents)   shift; cmd_agents "$@" ;;
+    windows)  shift; cmd_windows "$@" ;;
     help|-h|--help) cmd_help ;;
     *) cmd_help; exit 1 ;;
 esac
