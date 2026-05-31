@@ -562,7 +562,7 @@ Usage: bash 6v6.sh <command>
   install   auto-install docker + compose + helpers (Debian/Ubuntu)
             -> first time only. Re-login or 'newgrp docker' after.
   up [--with-windows]  build + start. --with-windows 또는 WITH_WINDOWS=1
-                       추가 시 6v6-win (Windows 11 tiny11, dmz 10.20.32.60)
+                       추가 시 6v6-win (Windows 11 tiny11, user 10.20.33.60)
                        도 같이 기동 (KVM 필요, 첫 부팅 30-60분).
   down      stop containers (volumes preserved). windows 도 같이 down.
   destroy   remove containers + volumes + images
@@ -575,14 +575,15 @@ Usage: bash 6v6.sh <command>
 Quick start (fresh Linux VM):
   bash 6v6.sh install                # auto-install docker + helpers
   newgrp docker                      # or open new terminal
-  bash 6v6.sh up                     # 13 컨테이너 (Windows 제외)
-  bash 6v6.sh up --with-windows      # 14 컨테이너 (+ Windows tiny11)
+  bash 6v6.sh up                     # 15 컨테이너 (Windows 제외)
+  bash 6v6.sh up --with-windows      # 16 컨테이너 (+ Windows tiny11, user zone)
   bash 6v6.sh status                 # show access info
   bash 6v6.sh smoke                  # health check
 
-Services: bastion / secu / web / juiceshop / dvwa / neobank / govportal /
-          mediforum / adminconsole / aicompanion / siem / attacker / portal
-Optional: 6v6-win (Windows 11 tiny11 사용자 PC) — --with-windows
+Services: bastion / attacker / fw / ips / web / siem / wazuh-indexer /
+          wazuh-dashboard / portal / juiceshop / dvwa / neobank / govportal /
+          mediforum / adminconsole / aicompanion
+Optional: 6v6-win (Windows 11 tiny11 사용자 PC, user 10.20.33.60) — --with-windows
 HELP
 }
 

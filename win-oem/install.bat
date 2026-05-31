@@ -4,6 +4,14 @@ set LOG=C:\oem-install.log
 echo [6v6] OEM start %DATE% %TIME% > %LOG%
 ping -n 20 127.0.0.1 >/dev/null
 
+rem --- 정적 라우팅: 6v6 모든 zone(ext/pipe/dmz/int) 은 ips(10.20.33.1) 경유 ---
+rem    Wazuh manager(10.20.32.100, dmz) enroll · web(10.20.32.80, dmz) 브라우징 ·
+rem    attacker(10.20.30.202, ext) 와의 트래픽까지 모두 fw/ips 정책 검사 강제.
+route -p add 10.20.30.0 mask 255.255.255.0 10.20.33.1 >> %LOG% 2>&1
+route -p add 10.20.31.0 mask 255.255.255.0 10.20.33.1 >> %LOG% 2>&1
+route -p add 10.20.32.0 mask 255.255.255.0 10.20.33.1 >> %LOG% 2>&1
+route -p add 10.20.40.0 mask 255.255.255.0 10.20.33.1 >> %LOG% 2>&1
+
 rem --- Sysmon + SwiftOnSecurity ---
 powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest -UseBasicParsing 'https://live.sysinternals.com/Sysmon64.exe' -OutFile 'C:\Windows\Sysmon64.exe'" >> %LOG% 2>&1
 powershell -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol='Tls12'; Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml' -OutFile 'C:\Windows\sysmonconfig.xml'" >> %LOG% 2>&1

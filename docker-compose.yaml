@@ -119,7 +119,9 @@ services:
       - ./keys:/keys:ro
     restart: unless-stopped
 
-  # ╭─ IPS: pipe <-> dmz (Suricata sniff + ip_forward) ────╮
+  # ╭─ IPS: pipe <-> dmz / user (Suricata sniff + ip_forward) ────╮
+  # user(10.20.33.0/24) 는 Windows 같은 사용자 PC 가 사는 zone. ips 가 user 의 게이트웨이
+  # (10.20.33.1) 역할을 겸하여, 사용자 PC 의 모든 인/아웃 트래픽이 fw + ips 정책을 거친다.
   ips:
     container_name: 6v6-ips
     build:
@@ -131,6 +133,8 @@ services:
         ipv4_address: 10.20.31.2
       dmz:
         ipv4_address: 10.20.32.1
+      user:
+        ipv4_address: 10.20.33.1
     cap_add: [NET_ADMIN, NET_RAW]
     sysctls:
       net.ipv4.ip_forward: "1"
@@ -390,6 +394,17 @@ networks:
       config:
         - subnet: 10.20.40.0/24
           gateway: 10.20.40.254
+
+  # user zone — 사용자 PC (Windows 11 tiny11 등) 가 사는 자리.
+  # dmz(외부 노출 서버) 와 분리되어 보안 모범사례에 부합.
+  # ips 의 user 인터페이스(10.20.33.1) 가 게이트웨이, fw/ips 정책 경유.
+  user:
+    name: 6v6-user
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.33.0/24
+          gateway: 10.20.33.254
 
 
 volumes:
