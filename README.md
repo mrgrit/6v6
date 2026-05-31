@@ -171,7 +171,7 @@ RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만 (`up --with-wi
 - 리눅스/맥: `/etc/hosts` (sudo)
 
 ```
-<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab
+<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab
 ```
 
 그 후 브라우저 — **모두 동일 패턴 `<service>.6v6.lab` 으로 접근** (web 의 Apache vhost 가 reverse proxy):
