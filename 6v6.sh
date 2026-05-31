@@ -260,7 +260,8 @@ cmd_setup_forward() {
 }
 
 cmd_up() {
-    # 플래그 파싱 — --with-windows 또는 WITH_WINDOWS=1 환경변수
+    # 플래그 파싱 — --with-windows (환경변수 WITH_WINDOWS=1).
+    # secuops-easy GUI 3종은 default 로 자동 배포 (SKIP_SECUOPS_EASY=1 으로 비활성).
     local with_windows=0
     for arg in "$@"; do
         case "$arg" in
@@ -325,6 +326,31 @@ cmd_up() {
         docker compose -f docker-compose.windows.yml up -d
         cmd_win_route_fix
     fi
+
+    # secuops-easy 특강 GUI 3종 자동 배포 (방화벽/IPS/WAF 콘솔).
+    # SKIP_SECUOPS_EASY=1 로 비활성.
+    if [ "${SKIP_SECUOPS_EASY:-0}" = "0" ] && [ -x secuops-easy-deploy/deploy_all.sh ]; then
+        cmd_secuops_easy_deploy
+    fi
+}
+
+cmd_secuops_easy_deploy() {
+    # base 컨테이너 (fw/ips/web) ready 까지 대기 후 deploy_all.sh 호출.
+    # 학생이 fw-gui/ips-gui/waf-gui.6v6.lab 으로 접속 가능하게 됨.
+    echo
+    echo "[6v6] secuops-easy GUI auto-deploy (set SKIP_SECUOPS_EASY=1 to disable)"
+    echo "[6v6]   waiting for fw/ips/web to be ready (max 60s)..."
+    local i
+    for i in $(seq 1 30); do
+        if docker exec 6v6-fw test -d /etc/haproxy 2>/dev/null && \
+           docker exec 6v6-ips test -f /etc/suricata/suricata.yaml 2>/dev/null && \
+           docker exec 6v6-web test -d /etc/modsecurity 2>/dev/null; then
+            break
+        fi
+        sleep 2
+    done
+    bash secuops-easy-deploy/deploy_all.sh 2>&1 | sed 's/^/  /'
+    echo "[6v6] secuops-easy GUI deployed — http://fw-gui.6v6.lab / ips-gui / waf-gui"
 }
 
 cmd_win_route_fix() {

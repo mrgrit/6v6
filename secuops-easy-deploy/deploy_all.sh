@@ -15,9 +15,13 @@ PAT="${GH_PAT:-}"
 
 clone() { # repo
   local r="$1"
+  rm -rf "$WORK/$r"
   if [ -n "$PAT" ]; then
-    rm -rf "$WORK/$r"
     git clone -q "https://${PAT}@github.com/mrgrit/${r}.git" "$WORK/$r"
+  else
+    # public clone (PAT unnecessary — 3 GUI repos are public)
+    git clone -q --depth 1 "https://github.com/mrgrit/${r}.git" "$WORK/$r" || \
+      echo "  ! clone failed for $r — check network or repo visibility"
   fi
 }
 
