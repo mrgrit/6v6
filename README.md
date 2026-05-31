@@ -1,43 +1,42 @@
 # 6v6 — CCC 인프라 단일 VM Docker 버전 (+ 7 취약 웹 + 통합 SIEM)
 
-학생 PC 의 **VMware Bridge VM 1대 안에** docker 컨테이너로 CCC 의 4-노드 보안 인프라
-(`bastion / secu / web / siem`) 를 그대로 올리고 **취약 웹 7개 + 관리 포털** 을 추가한
-교육용 경량 배포. 강의 자료의 IP 스킴 (`10.20.30.0/24`) 그대로 사용.
+학생 PC 의 **VMware Bridge VM 1대 안에** docker 컨테이너로 CCC 의 보안 인프라를
+그대로 올리고 **취약 웹 7개 + 관리 포털 + Wazuh manager/indexer/dashboard** 까지 추가한
+교육용 배포. **4-tier 토폴로지** (ext / pipe / dmz / int) 로 실제 기업망과 동형.
 
 ```
-                       단일 bridge 10.20.30.0/24
-   ┌──────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-   │ attacker │───▶│  secu  │───▶│  web   │───▶│ siem   │
-   │  10.202  │    │  10.1  │    │ 10.80  │    │ 10.100 │
-   └──────────┘    └────────┘    └────────┘    └────────┘
-                       │            │              ▲
-                       │            ├─ juice (10.81)   ┐         │
-                       │            ├─ dvwa  (10.82)   │         │
-                       │            ├─ neobank (10.83) │         │
-                       │            ├─ govportal(10.84)│ 외부 노출 X
-                       │            ├─ mediforum(10.85)│ web 만 reverse proxy
-                       │            ├─ admin (10.86)   │         │
-                       │            └─ ai (10.87)      ┘         │
-                       │                                          │
-                       └─ Suricata sniff + Wazuh agent            │
-                                                                  │
-       옵션 — dmz zone 10.20.32.0/24 (--with-windows)             │
-       ┌────────────────────────────────────────────────┐         │
-       │  6v6-win  Windows 11 tiny11  10.20.32.60       │─────────┘
-       │  Sysmon + Wazuh agent + OpenSSH 자동계측       │  Wazuh enroll
-       └────────────────────────────────────────────────┘  → siem 10.20.32.100
+   ext 10.20.30.0/24       pipe 10.20.31.0/24      dmz 10.20.32.0/24                    int 10.20.40.0/24
+   ┌─────────────────┐     ┌──────────────┐        ┌───────────────────────────┐       ┌─────────────────────┐
+   │ 6v6-attacker .202│    │              │        │ 6v6-web         .80       │       │ juiceshop      .81  │
+   │ 6v6-bastion  .201│───▶│  6v6-ips     │───────▶│ 6v6-siem(mgr)   .100      │──────▶│ dvwa           .82  │
+   │                  │    │  .2 ↔ dmz.1  │        │ 6v6-wazuh-indexer .110    │       │ neobank        .83  │
+   │                  │    │              │        │ 6v6-wazuh-dashboard .120  │       │ govportal      .84  │
+   └─────────────────┘     └──────────────┘        │ 6v6-portal       .50      │       │ mediforum      .85  │
+            │                      ▲               │ (옵션) 6v6-win   .60      │       │ adminconsole   .86  │
+            ▼                      │               └───────────────────────────┘       │ aicompanion    .87  │
+   ┌──────────────────────────────────┐                       │                        └─────────────────────┘
+   │ 6v6-fw   .1 (ext) ↔ .1 (pipe)   │                        │ web 의 Apache vhost 만 int 로 reverse proxy
+   │ nftables L3 forward + DNAT      │                        │ (학생/공격자는 int 직접 접근 불가)
+   └──────────────────────────────────┘                       ▼
+                                                       (7 vuln sites 외부 노출 X)
+   트래픽 흐름: attacker → fw(L3/NAT) → ips(L7 sniff/Suricata) → dmz(web/siem/win) → [web]만 int(vuln)
 ```
+
+> **Windows 엔드포인트 (옵션, `--with-windows`)** 는 dmz `10.20.32.60` 에 합류 →
+> 같은 dmz 의 wazuh manager(10.20.32.100) 로 Sysmon eventchannel 직통.
+> 공격자 트래픽도 동일하게 `fw → ips` 두 단계 정책 검사를 거쳐 도달.
 
 ## 통합 로그 (Wazuh — agent + syslog 두 패러다임)
 
 | Source | 방식 | 로그 | 경로 |
 |--------|------|------|------|
-| **secu** (Suricata) | Wazuh **agent** | eve.json + syslog | siem:1514/tcp |
-| **web** (Apache+ModSec) | Wazuh **agent** | access/error/modsec_audit | siem:1514/tcp |
-| **bastion** (sshd) | **rsyslog** forward | auth.log + system | siem:514/udp |
-| **attacker** (shell) | **rsyslog** forward | shell + system | siem:514/udp |
+| **6v6-ips** (Suricata) | Wazuh **agent** | eve.json + fast.log | siem:1514/tcp |
+| **6v6-web** (Apache+ModSec) | Wazuh **agent** | access/error/modsec_audit | siem:1514/tcp |
+| **6v6-win** (Sysmon, 옵션) | Wazuh **agent** (Windows MSI) | Sysmon EventChannel + Security | siem:1514/tcp |
+| **6v6-bastion** (sshd) | **rsyslog** forward | auth.log + system | siem:514/udp |
+| **6v6-attacker** (shell) | **rsyslog** forward | shell + system | siem:514/udp |
 
-학습 포인트: Suricata 와 ModSecurity 는 **agent 패러다임** (자체 binary 가 디코딩까지),
+학습 포인트: Suricata · ModSecurity · Sysmon 은 **agent 패러다임** (자체 binary 가 디코딩까지),
 bastion + attacker 는 **syslog 패러다임** (rsyslog 가 raw forward, manager 가 디코딩).
 
 ## VM 권장 사양
@@ -102,29 +101,39 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 | 5601 | SIEM lite UI (Wazuh 알림 viewer) |
 | 9100 | Bastion API |
 
-## 컨테이너 구성 (총 13개)
+## 컨테이너 구성 (base 15개 + 옵션 Windows 1)
 
-| 컨테이너 | IP | 역할 |
-|----------|-----|------|
-| 6v6-bastion | 10.20.30.201 | SSH 점프 + Bastion API + rsyslog forward |
-| 6v6-secu | 10.20.30.1 | nftables + Suricata + **Wazuh agent** |
-| 6v6-web | 10.20.30.80 | Apache + ModSecurity + 7 vhost + **Wazuh agent** |
-| 6v6-juiceshop | 10.20.30.81 | OWASP Juice Shop (웹 → web 만) |
-| 6v6-dvwa | 10.20.30.82 | DVWA |
-| 6v6-neobank | 10.20.30.83 | NeoBank (Flask, 30 취약점) |
-| 6v6-govportal | 10.20.30.84 | GovPortal (Flask, 25 취약점) |
-| 6v6-mediforum | 10.20.30.85 | MediForum (Flask) |
-| 6v6-adminconsole | 10.20.30.86 | AdminConsole (Flask, RCE/XXE) |
-| 6v6-aicompanion | 10.20.30.87 | AICompanion (LLM 취약점, mock 가능) |
-| 6v6-siem | 10.20.30.100 | **Wazuh manager** (agent + syslog 입력) + alert viewer |
-| 6v6-attacker | 10.20.30.202 | nmap, hydra, sqlmap, nikto + rsyslog forward |
-| 6v6-portal | 10.20.30.50 | 관리 대시보드 (FastAPI + HTMX) |
+| 컨테이너 | Zone / IP | 역할 |
+|----------|-----------|------|
+| 6v6-bastion | ext 10.20.30.201 | SSH 점프 + Bastion API + rsyslog forward |
+| 6v6-attacker | ext 10.20.30.202 | nmap, hydra, sqlmap, nikto, nuclei + rsyslog forward |
+| **6v6-fw** | ext .1 ↔ pipe .1 | **방화벽** — nftables L3 forward + DNAT + HAProxy |
+| **6v6-ips** | pipe .2 ↔ dmz .1 | **IPS** — Suricata 인라인 sniff + **Wazuh agent** |
+| 6v6-web | dmz .80 ↔ int .80 | Apache + ModSecurity + 7 vhost + **Wazuh agent** |
+| 6v6-siem | dmz 10.20.32.100 | **Wazuh manager** (1514 agent / 514 syslog 입력) + alert viewer |
+| 6v6-wazuh-indexer | dmz 10.20.32.110 | OpenSearch (Wazuh 알림 색인) |
+| 6v6-wazuh-dashboard | dmz 10.20.32.120 | Wazuh Dashboard UI (5601) |
+| 6v6-portal | dmz 10.20.32.50 | 관리 대시보드 (FastAPI + HTMX) |
+| 6v6-juiceshop | int 10.20.40.81 | OWASP Juice Shop (web vhost 만 도달) |
+| 6v6-dvwa | int 10.20.40.82 | DVWA |
+| 6v6-neobank | int 10.20.40.83 | NeoBank (Flask, 30 취약점) |
+| 6v6-govportal | int 10.20.40.84 | GovPortal (Flask, 25 취약점) |
+| 6v6-mediforum | int 10.20.40.85 | MediForum (Flask) |
+| 6v6-adminconsole | int 10.20.40.86 | AdminConsole (Flask, RCE/XXE) |
+| 6v6-aicompanion | int 10.20.40.87 | AICompanion (LLM 취약점, mock 가능) |
 
-### 옵션 — Windows 엔드포인트 (14번째 컨테이너)
+> int(10.20.40.0/24) 의 7 vuln 사이트는 **외부 노출 X** — `web` 의 Apache vhost reverse
+> proxy 로만 도달. attacker → fw → ips → web → vuln 의 강제 경유.
 
-| 컨테이너 | IP | 역할 |
-|----------|-----|------|
-| 6v6-win | 10.20.32.60 (dmz) | Windows 11 tiny11 사용자 PC — Sysmon + Wazuh agent + OpenSSH 자동계측 |
+### 옵션 — Windows 엔드포인트 (16번째 컨테이너)
+
+| 컨테이너 | Zone / IP | 역할 |
+|----------|-----------|------|
+| 6v6-win | dmz 10.20.32.60 | Windows 11 tiny11 사용자 PC — Sysmon + Wazuh agent + OpenSSH 자동계측 |
+
+> Windows 도 **dmz** 에 합류하여 같은 zone 의 wazuh manager(10.20.32.100) 로 직통 enroll.
+> 공격자가 Windows 를 노려도 트래픽은 `attacker(ext) → fw → ips → win(dmz)` 정책 경유 —
+> base 와 동일한 방어선 적용.
 
 배포 방법 (두 가지 동등):
 
@@ -191,7 +200,7 @@ Host 6v6-attacker
   Port 2202
   User ccc
 
-Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
+Host 6v6-fw 6v6-ips 6v6-web 6v6-siem 6v6-portal 6v6-win
   ProxyJump 6v6-bastion
   User ccc
 ```
@@ -200,46 +209,54 @@ Host 6v6-secu 6v6-web 6v6-siem 6v6-portal
 |------|--------------|----------|
 | `ssh 6v6-bastion` | bastion (점프 호스트) | 직접 (port 2204) |
 | `ssh 6v6-attacker` | attacker (pentest 도구) | 직접 (port 2202, 빠른 공격 진입) |
-| `ssh 6v6-secu` | secu (nftables + Suricata) | bastion 경유 자동 |
-| `ssh 6v6-web` | web (Apache + ModSec) | bastion 경유 자동 |
+| `ssh 6v6-fw` | fw (nftables 방화벽 + HAProxy) | bastion 경유 자동 |
+| `ssh 6v6-ips` | ips (Suricata + Wazuh agent) | bastion 경유 자동 |
+| `ssh 6v6-web` | web (Apache + ModSec + Wazuh agent) | bastion 경유 자동 |
 | `ssh 6v6-siem` | siem (Wazuh manager) | bastion 경유 자동 |
 | `ssh 6v6-portal` | portal (관리 대시보드) | bastion 경유 자동 |
+| `ssh 6v6-win` | Windows 11 (옵션, PowerShell 셸) | bastion 경유 자동 |
 
 **bastion 안에 들어가서**는 alias 자동 등록되어 다음도 가능:
 ```bash
-ssh secu       # 10.20.30.1
-ssh web        # 10.20.30.80
-ssh siem       # 10.20.30.100
+ssh fw         # 10.20.30.1   (방화벽 — ext 쪽 IP)
+ssh ips        # 10.20.31.2   (IPS — pipe 쪽 IP)
+ssh web        # 10.20.32.80  (web — dmz 쪽 IP)
+ssh siem       # 10.20.32.100 (Wazuh manager)
 ssh attacker   # 10.20.30.202
+ssh win        # 10.20.32.60  (Windows, 옵션 — PowerShell)
 ```
 
 ### 3. 컨테이너 직접 (VM 호스트에서, 디버그/관리)
 
 ```bash
 docker exec -it 6v6-bastion bash       # bastion API 디버그
-docker exec -it 6v6-secu bash          # nftables / Suricata 점검
+docker exec -it 6v6-fw bash            # nftables 룰 / HAProxy / fw 라우팅
+docker exec -it 6v6-ips bash           # Suricata / Wazuh agent (eve.json)
 docker exec -it 6v6-web bash           # Apache / ModSec / Wazuh agent
-docker exec -it 6v6-siem bash          # Wazuh manager
+docker exec -it 6v6-siem bash          # Wazuh manager (analysisd/remoted/...)
+docker exec -it 6v6-wazuh-indexer bash # OpenSearch
+docker exec -it 6v6-wazuh-dashboard bash  # Wazuh Dashboard
 docker exec -it 6v6-attacker bash      # pentest 도구
 docker exec -it 6v6-portal bash        # FastAPI portal
 docker exec -it 6v6-juiceshop sh       # JuiceShop (Node.js, Alpine)
 docker exec -it 6v6-dvwa bash          # DVWA (PHP + MySQL)
 docker exec -it 6v6-neobank bash       # NeoBank Flask
 # (govportal / mediforum / adminconsole / aicompanion 동일 패턴)
+# Windows (옵션): docker exec 으로는 곤란 — SSH 또는 http://<VM_IP>:8006 VNC 권장
 ```
 
 ### 4. 핵심 운영 명령
 
 | 명령 | 의미 |
 |------|------|
-| `bash 6v6.sh status` | 외부 접속 정보 + 컨테이너 상태 |
+| `bash 6v6.sh status` | 외부 접속 정보 + 컨테이너 상태 (windows 포함) |
 | `bash 6v6.sh smoke` | 외부 노출 포트 + Wazuh agent 등록 + SSH 헬스 |
 | `bash 6v6.sh logs <svc>` | 컨테이너 로그 follow |
 | `docker exec 6v6-siem /var/ossec/bin/wazuh-control status` | Wazuh manager 8 daemon 상태 |
-| `docker exec 6v6-siem /var/ossec/bin/agent_control -l` | 등록된 agent (secu/web 보여야) |
+| `docker exec 6v6-siem /var/ossec/bin/agent_control -l` | 등록된 agent (ips/web/[win] 보여야) |
 | `docker exec 6v6-siem tail -20 /var/ossec/logs/alerts/alerts.json` | 최근 alert |
-| `docker exec 6v6-secu sudo nft list ruleset` | secu nftables 룰 |
-| `docker exec 6v6-secu tail /var/log/suricata/eve.json` | Suricata 알림 |
+| `docker exec 6v6-fw  sudo nft list ruleset` | 방화벽 룰 (ext↔pipe forward + DNAT) |
+| `docker exec 6v6-ips tail /var/log/suricata/eve.json` | Suricata 알림 (IPS 컨테이너) |
 | `docker exec 6v6-web tail /var/log/apache2/modsec_audit.log` | ModSecurity 차단 로그 |
 
 ### 5. 빠른 e2e 테스트 — attacker 에서 SQLi 발사 → SIEM 알림 확인
@@ -282,10 +299,10 @@ sudo tail -20 /var/ossec/logs/alerts/alerts.json | jq '.rule.description, .agent
 # 1) manager 의 8 daemon 확인
 docker exec 6v6-siem /var/ossec/bin/wazuh-control status
 
-# 2) 등록된 agent 목록 (secu, web 보여야)
+# 2) 등록된 agent 목록 (ips, web — Windows 옵션 시 win 추가)
 docker exec 6v6-siem /var/ossec/bin/agent_control -l
 
-# 3) 최근 alert (Suricata + ModSec 통합)
+# 3) 최근 alert (Suricata + ModSec [+ Sysmon] 통합)
 docker exec 6v6-siem tail -20 /var/ossec/logs/alerts/alerts.json | jq
 
 # 4) 학생이 attacker 에서 SQLi 발사 → 즉시 alert
@@ -293,6 +310,9 @@ docker exec 6v6-attacker bash -c "curl -s -A 'sqlmap/1.7' \
     \"http://web/?q=' UNION SELECT 1,2,3--\""
 sleep 3
 docker exec 6v6-siem grep -i sqli /var/ossec/logs/alerts/alerts.json | tail
+
+# 5) Windows (옵션) Sysmon → SIEM 도달 확인
+docker exec 6v6-siem grep -c "6v6-win" /var/ossec/logs/archives/archives.json
 ```
 
 ## 명령어
@@ -318,14 +338,15 @@ bash 6v6.sh windows logs             # 부팅·OEM 진행 로그
 
 | 항목 | 300B | 6v6 |
 |------|------|-----|
-| 토폴로지 | 4-tier (edge/dmz/private/mgmt) | 단일 bridge |
-| 컨테이너 수 | 18 | 13 |
+| 토폴로지 | 4-tier (edge/dmz/private/mgmt) | **4-tier** (ext/pipe/dmz/int) |
+| 컨테이너 수 | 18 | 15 base (+1 Windows 옵션) |
 | 외부 노출 포트 | 4 (80/443/53/2204) | 7 |
-| WAF / IDS 분리 | 별도 컨테이너 | secu / web 통합 |
-| Wazuh | 3 컨테이너 (manager+indexer+dashboard) | 1 컨테이너 (manager + lite viewer) |
-| 취약 웹 | 7 (juice/dvwa/neobank/govportal/mediforum/admin/ai) | 7 (동일) |
-| Wazuh agent | 미포함 (300B 는 raw 로그 마운트) | secu+web 에 설치 |
-| syslog forward | 미포함 | bastion+attacker → siem |
+| 방화벽 / IPS / WAF | 통합 | **분리** — fw(nftables) / ips(Suricata) / web(ModSec) |
+| Wazuh | 3 컨테이너 (manager+indexer+dashboard) | **3 컨테이너 동일** (manager+indexer+dashboard) |
+| 취약 웹 | 7 (juice/dvwa/neobank/govportal/mediforum/admin/ai) | 7 (동일, int zone 격리) |
+| Wazuh agent | 미포함 (300B 는 raw 로그 마운트) | ips+web (+옵션 win) 에 설치 |
+| syslog forward | 미포함 | bastion+attacker → siem 514/udp |
+| Windows 엔드포인트 | 미포함 | 옵션 `--with-windows` (tiny11 + Sysmon) |
 
 ## 라이선스
 
