@@ -10,7 +10,7 @@
 # (GH_PAT 없으면 GUI 레포가 이미 /opt/src 에 있다고 가정하거나 git clone 을 건너뜀)
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WORK="${WORK:-/opt/secuops-easy-src}"
+WORK="${WORK:-/tmp/secuops-easy-src}"
 PAT="${GH_PAT:-}"
 
 clone() { # repo
