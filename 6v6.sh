@@ -16,11 +16,11 @@ ensure_ssh_keys() {
     mkdir -p keys
     if [ ! -f keys/id_rsa ]; then
         if ! command -v ssh-keygen >/dev/null 2>&1; then
-            echo "[6v6] ssh-keygen 미설치. 'sudo apt install -y openssh-client' 후 재실행."
+            echo "[6v6] ssh-keygen not found. Install with 'sudo apt install -y openssh-client' and re-run."
             exit 1
         fi
         ssh-keygen -t ed25519 -f keys/id_rsa -N "" -C "6v6-bastion@auto" >/dev/null 2>&1
-        echo "[6v6] generated SSH key pair (keys/id_rsa) — 컨테이너 간 password-less SSH 용"
+        echo "[6v6] generated SSH key pair (keys/id_rsa) - for password-less SSH between containers"
     fi
     chmod 600 keys/id_rsa  2>/dev/null || true
     chmod 644 keys/id_rsa.pub 2>/dev/null || true
@@ -43,7 +43,7 @@ ensure_misp_env() {
     grep -q "^CORE_HTTP_PORT=" .env.misp || echo "CORE_HTTP_PORT=8880" >> .env.misp
     grep -q "^CORE_HTTPS_PORT=" .env.misp || echo "CORE_HTTPS_PORT=8443" >> .env.misp
     chmod 600 .env.misp
-    echo "[6v6] generated .env.misp — MISP 5 컨테이너 stack (core/db/redis/modules/mail)"
+    echo "[6v6] generated .env.misp - MISP 5 container stack (core/db/redis/modules/mail)"
 }
 
 ensure_opencti_env() {
@@ -51,8 +51,8 @@ ensure_opencti_env() {
     # docker-compose.opencti.yml 의 모든 ${OPENCTI_*} / ${MINIO_*} / ${RABBITMQ_*} env 채움.
     [ -f .env.opencti ] && return 0
     if ! command -v openssl >/dev/null 2>&1 || ! command -v uuidgen >/dev/null 2>&1; then
-        echo "[6v6] WARN: openssl/uuidgen 미설치 — OpenCTI overlay 자동 생성 불가."
-        echo "      'sudo apt install -y openssl uuid-runtime' 후 'bash 6v6.sh up' 재실행."
+        echo "[6v6] WARN: openssl/uuidgen not installed - OpenCTI overlay auto-gen unavailable."
+        echo "      Install with 'sudo apt install -y openssl uuid-runtime' and re-run 'bash 6v6.sh up'."
         return 1
     fi
     VM_IP=$(vm_ip 2>/dev/null || echo "127.0.0.1")
@@ -88,7 +88,7 @@ CONNECTOR_OPENCTI_ID=$(uuidgen)
 SMTP_HOSTNAME=localhost
 ENV
     chmod 600 .env.opencti
-    echo "[6v6] generated .env.opencti — OpenCTI 7.x 의 ENCRYPTION_KEY + TOKEN + MINIO + RABBITMQ"
+    echo "[6v6] generated .env.opencti - OpenCTI 7.x ENCRYPTION_KEY + TOKEN + MINIO + RABBITMQ"
 }
 
 vm_ip() {
@@ -284,20 +284,20 @@ cmd_up() {
     if [ "${SKIP_OPENCTI:-0}" = "0" ] && [ -f docker-compose.opencti.yml ]; then
         COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.opencti.yml"
         ENV_FILES="$ENV_FILES --env-file .env.opencti"
-        echo "[6v6] OpenCTI overlay 활성 (SKIP_OPENCTI=1 로 비활성)"
+        echo "[6v6] OpenCTI overlay enabled (set SKIP_OPENCTI=1 to disable)"
     fi
     if [ "${SKIP_MISP:-0}" = "0" ] && [ -f docker-compose.misp.yml ]; then
         COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.misp.yml"
         ENV_FILES="$ENV_FILES --env-file .env.misp"
-        echo "[6v6] MISP overlay 활성 (SKIP_MISP=1 로 비활성)"
+        echo "[6v6] MISP overlay enabled (set SKIP_MISP=1 to disable)"
     fi
     if [ "${SKIP_SYSMON:-0}" = "0" ] && [ -f docker-compose.sysmon.yml ]; then
         COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.sysmon.yml"
-        echo "[6v6] sysmon-host overlay 활성 (W11 학습, SKIP_SYSMON=1 로 비활성)"
+        echo "[6v6] sysmon-host overlay enabled (W11 lecture; set SKIP_SYSMON=1 to disable)"
     fi
     if [ "${SKIP_OLLAMA:-0}" = "0" ] && [ -f docker-compose.ollama.yml ]; then
         COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.ollama.yml"
-        echo "[6v6] Ollama overlay 활성 (aisec 학습, CPU inference 느림. SKIP_OLLAMA=1 로 비활성)"
+        echo "[6v6] Ollama overlay enabled (aisec lecture; CPU inference slow. SKIP_OLLAMA=1 to disable)"
     fi
     COMPOSE_FILES="$COMPOSE_FILES $ENV_FILES"
     docker compose $COMPOSE_FILES build
@@ -312,7 +312,7 @@ cmd_up() {
     # Manager-SubAgent layer 자동 구성 (skip 시 SKIP_AGENTS=1)
     if [ "${SKIP_AGENTS:-0}" = "0" ] && [ -x agent/setup-agents.sh ]; then
         echo
-        echo "[6v6] starting Manager + SubAgent layer (SKIP_AGENTS=1 로 skip 가능)..."
+        echo "[6v6] starting Manager + SubAgent layer (set SKIP_AGENTS=1 to skip)..."
         bash agent/setup-agents.sh
     fi
 
@@ -320,8 +320,8 @@ cmd_up() {
     if [ "$with_windows" = "1" ]; then
         echo
         echo "[6v6] starting Windows endpoint (6v6-win, user zone 10.20.33.60)..."
-        echo "      first boot 30-60 min — Windows ISO 다운로드 + 무인설치 + Sysmon/Wazuh/OpenSSH"
-        echo "      진행 확인: http://<VM_IP>:8006  /  완료 표식: win-shared/OEM_DONE.txt"
+        echo "      first boot 30-60 min - Windows ISO download + unattended install + Sysmon/Wazuh/OpenSSH"
+        echo "      watch progress: http://<VM_IP>:8006  /  completion marker: win-shared/OEM_DONE.txt"
         docker compose -f docker-compose.windows.yml up -d
         cmd_win_route_fix
     fi
@@ -334,38 +334,41 @@ cmd_win_route_fix() {
     # 보내면 다른 zone(dmz/int) 으로 routing 불가 → Wazuh manager(10.20.32.100) 도달 X.
     # ips 의 user IP(10.20.33.1) 로 변경하면 ips 가 dmz/int 로 forward + SNAT.
     # (컨테이너 재시작 시 docker 가 default GW 복구 → cmd_windows up 마다 재적용 필요.)
-    echo "[6v6] 6v6-win 컨테이너 ready 대기 (10s)..."
+    echo "[6v6] waiting 10s for 6v6-win container to be ready..."
     sleep 10
     if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
         docker exec 6v6-win sh -c \
             "ip route del default 2>/dev/null; ip route add default via 10.20.33.1" \
-            2>/dev/null && echo "[6v6] 6v6-win default route → 10.20.33.1 (ips)" \
-                        || echo "[6v6] WARN: 6v6-win default route 변경 실패 (수동 확인 필요)"
+            2>/dev/null && echo "[6v6] 6v6-win default route -> 10.20.33.1 (ips)" \
+                        || echo "[6v6] WARN: failed to change 6v6-win default route (check manually)"
     fi
 }
 
 cmd_check_kvm() {
     if [ ! -e /dev/kvm ]; then
-        echo "[6v6] X /dev/kvm 없음 — Windows 엔드포인트는 KVM 가속이 필요합니다."
-        echo "      1) BIOS/UEFI 에서 가상화 (VT-x / AMD-V) 활성화"
+        echo "[6v6] X /dev/kvm missing - Windows endpoint requires KVM acceleration."
+        echo "      1) Enable virtualization (VT-x / AMD-V) in BIOS/UEFI"
         echo "      2) sudo apt install -y qemu-kvm"
-        echo "      3) sudo modprobe kvm_intel  (또는 kvm_amd)"
+        echo "      3) sudo modprobe kvm_intel  (or kvm_amd)"
+        echo "      To skip Windows entirely, run 'bash 6v6.sh up' without --with-windows."
         exit 1
     fi
     if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
-        echo "[6v6] WARN: /dev/kvm 권한 없음 (현재 user). Windows 컨테이너 시작 실패할 수 있음."
+        echo "[6v6] WARN: no rw permission on /dev/kvm for current user."
+        echo "      Windows container may fail to start. Fix:"
         echo "      sudo usermod -aG kvm \$USER && newgrp kvm"
     fi
     local ram_avail
     ram_avail=$(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo 2>/dev/null || echo 0)
     if [ "${ram_avail:-0}" -lt 5 ]; then
-        echo "[6v6] WARN: 가용 RAM ${ram_avail}G — Windows 4G + 6v6 본 스택과 빠듯. swap 또는 컨테이너 일부 down 권장."
+        echo "[6v6] WARN: only ${ram_avail}G RAM available - tight for Windows 4G + 6v6 stack."
+        echo "      Consider adding swap or stopping some containers."
     fi
 }
 
 cmd_windows() {
     # Windows 엔드포인트 후속 관리 — up/down/status/logs
-    [ -f docker-compose.windows.yml ] || { echo "[6v6] docker-compose.windows.yml 없음"; exit 1; }
+    [ -f docker-compose.windows.yml ] || { echo "[6v6] docker-compose.windows.yml not found"; exit 1; }
     local sub="${1:-status}"
     case "$sub" in
         up)
@@ -373,18 +376,18 @@ cmd_windows() {
             cmd_check_kvm
             docker compose -f docker-compose.windows.yml up -d
             cmd_win_route_fix
-            echo "[6v6] 진행: http://$(vm_ip):8006  /  완료 표식: win-shared/OEM_DONE.txt"
+            echo "[6v6] watch progress: http://$(vm_ip):8006  /  completion marker: win-shared/OEM_DONE.txt"
             ;;
         down)    docker compose -f docker-compose.windows.yml down ;;
         destroy) docker compose -f docker-compose.windows.yml down -v
-                 echo "[6v6] win-storage/ win-shared/ 디렉토리는 별도 삭제 (디스크 이미지 보존)" ;;
+                 echo "[6v6] win-storage/ and win-shared/ dirs not deleted (disk image preserved)" ;;
         status)
             if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
                 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' --filter name=^6v6-win$
-                [ -f win-shared/OEM_DONE.txt ] && echo "[6v6] OEM 완료 (Sysmon + Wazuh agent + OpenSSH 설치됨)" \
-                                              || echo "[6v6] OEM 진행 중 — http://$(vm_ip):8006 에서 부팅 확인"
+                [ -f win-shared/OEM_DONE.txt ] && echo "[6v6] OEM complete (Sysmon + Wazuh agent + OpenSSH installed)" \
+                                              || echo "[6v6] OEM in progress - watch boot at http://$(vm_ip):8006"
             else
-                echo "[6v6] 6v6-win 미가동 — 'bash 6v6.sh windows up' 으로 시작"
+                echo "[6v6] 6v6-win not running - start with 'bash 6v6.sh windows up'"
             fi
             ;;
         logs)    docker compose -f docker-compose.windows.yml logs -f --tail=100 ;;
@@ -394,7 +397,7 @@ cmd_windows() {
 
 cmd_agents() {
     # 수동 호출 — 컨테이너 재가동 없이 agent layer 만 갱신
-    [ -x agent/setup-agents.sh ] || { echo "[6v6] agent/setup-agents.sh 없음"; exit 1; }
+    [ -x agent/setup-agents.sh ] || { echo "[6v6] agent/setup-agents.sh not found"; exit 1; }
     bash agent/setup-agents.sh "$@"
 }
 
@@ -409,7 +412,7 @@ cmd_destroy() {
         docker compose -f docker-compose.windows.yml down -v 2>/dev/null || true
     docker compose down -v --rmi local
     echo "[6v6] containers + volumes + built images all removed."
-    echo "      (Windows: win-storage/ win-shared/ 디렉토리는 보존 — 수동 삭제 필요)"
+    echo "      (Windows: win-storage/ and win-shared/ dirs preserved - delete manually if needed)"
 }
 
 cmd_logs() {
@@ -580,29 +583,29 @@ Usage: bash 6v6.sh <command>
 
   install   auto-install docker + compose + helpers (Debian/Ubuntu)
             -> first time only. Re-login or 'newgrp docker' after.
-  up [--with-windows]  build + start. --with-windows 또는 WITH_WINDOWS=1
-                       추가 시 6v6-win (Windows 11 tiny11, user 10.20.33.60)
-                       도 같이 기동 (KVM 필요, 첫 부팅 30-60분).
-  down      stop containers (volumes preserved). windows 도 같이 down.
+  up [--with-windows]  build + start. With --with-windows (or WITH_WINDOWS=1)
+                       also starts 6v6-win (Windows 11 tiny11, user 10.20.33.60).
+                       Requires KVM. First boot 30-60 min.
+  down      stop containers (volumes preserved). Windows also taken down.
   destroy   remove containers + volumes + images
-  status    container status + access info (windows 포함)
+  status    container status + access info (Windows included)
   smoke     external ports + container + Wazuh + SSH health checks
   logs <svc>  follow container logs
   windows {up|down|destroy|status|logs}
-            Windows 엔드포인트 후속 관리 (base 가동 후 별도 옵션)
+            manage Windows endpoint separately (after base is up)
 
 Quick start (fresh Linux VM):
   bash 6v6.sh install                # auto-install docker + helpers
   newgrp docker                      # or open new terminal
-  bash 6v6.sh up                     # 15 컨테이너 (Windows 제외)
-  bash 6v6.sh up --with-windows      # 16 컨테이너 (+ Windows tiny11, user zone)
+  bash 6v6.sh up                     # 15 containers (Windows excluded)
+  bash 6v6.sh up --with-windows      # 16 containers (+ Windows tiny11, user zone)
   bash 6v6.sh status                 # show access info
   bash 6v6.sh smoke                  # health check
 
 Services: bastion / attacker / fw / ips / web / siem / wazuh-indexer /
           wazuh-dashboard / portal / juiceshop / dvwa / neobank / govportal /
           mediforum / adminconsole / aicompanion
-Optional: 6v6-win (Windows 11 tiny11 사용자 PC, user 10.20.33.60) — --with-windows
+Optional: 6v6-win (Windows 11 tiny11 user PC, user 10.20.33.60) -- --with-windows
 HELP
 }
 
