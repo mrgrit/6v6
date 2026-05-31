@@ -318,12 +318,15 @@ services:
   misp-modules:
     image: ${REGISTRY_MIRROR_URL:-}ghcr.io/misp/misp-docker/misp-modules:${MODULES_RUNNING_TAG:-latest}
     restart: always
+    # start_period 5s → 120s, retries 3 → 30. 학생 fresh VM(느린 disk + 첫 pull)에서
+    # misp-modules 의 6666 listen 까지 30s+ 걸려 healthcheck 실패 → core 가 dependency
+    # failed to start 로 죽는 사례 fix.
     healthcheck:
       test: "/bin/bash -c '</dev/tcp/localhost/6666'"
-      interval: 2s
-      timeout: 1s
-      retries: 3
-      start_period: 5s
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 120s
       start_interval: 5s
     volumes:
       # custom MISP modules are loaded at startup time
