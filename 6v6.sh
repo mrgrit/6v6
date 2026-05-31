@@ -323,6 +323,24 @@ cmd_up() {
         echo "      first boot 30-60 min — Windows ISO 다운로드 + 무인설치 + Sysmon/Wazuh/OpenSSH"
         echo "      진행 확인: http://<VM_IP>:8006  /  완료 표식: win-shared/OEM_DONE.txt"
         docker compose -f docker-compose.windows.yml up -d
+        cmd_win_route_fix
+    fi
+}
+
+cmd_win_route_fix() {
+    # dockurr/windows 컨테이너의 default GW 변경: docker bridge .254 → ips (10.20.33.1).
+    # 게스트 OS 가 dockurr NAT 모드로 outbound 패킷을 컨테이너로 보내면, 컨테이너가
+    # 자신의 default GW 로 SNAT 송신한다. 기본 docker bridge GW(.254=docker host) 로
+    # 보내면 다른 zone(dmz/int) 으로 routing 불가 → Wazuh manager(10.20.32.100) 도달 X.
+    # ips 의 user IP(10.20.33.1) 로 변경하면 ips 가 dmz/int 로 forward + SNAT.
+    # (컨테이너 재시작 시 docker 가 default GW 복구 → cmd_windows up 마다 재적용 필요.)
+    echo "[6v6] 6v6-win 컨테이너 ready 대기 (10s)..."
+    sleep 10
+    if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
+        docker exec 6v6-win sh -c \
+            "ip route del default 2>/dev/null; ip route add default via 10.20.33.1" \
+            2>/dev/null && echo "[6v6] 6v6-win default route → 10.20.33.1 (ips)" \
+                        || echo "[6v6] WARN: 6v6-win default route 변경 실패 (수동 확인 필요)"
     fi
 }
 
@@ -354,6 +372,7 @@ cmd_windows() {
             cmd_check_docker
             cmd_check_kvm
             docker compose -f docker-compose.windows.yml up -d
+            cmd_win_route_fix
             echo "[6v6] 진행: http://$(vm_ip):8006  /  완료 표식: win-shared/OEM_DONE.txt"
             ;;
         down)    docker compose -f docker-compose.windows.yml down ;;
