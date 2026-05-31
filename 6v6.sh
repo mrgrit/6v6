@@ -117,10 +117,11 @@ cmd_install() {
     echo "[6v6] (1/4) apt-get update"
     sudo apt-get update -qq
 
-    echo "[6v6] (2/4) install helpers (git, curl, jq, sshpass, net-tools, iproute2, dnsutils)"
+    echo "[6v6] (2/4) install helpers (git, curl, jq, sshpass, net-tools, iproute2, dnsutils, python3-venv)"
     sudo apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release \
-        git jq sshpass net-tools iproute2 dnsutils >/dev/null
+        git jq sshpass net-tools iproute2 dnsutils \
+        python3-venv python3-pip >/dev/null
 
     if ! command -v docker >/dev/null 2>&1; then
         echo "[6v6] (3/4) install Docker Engine"
@@ -363,7 +364,9 @@ cmd_up() {
     if [ "${SKIP_AGENTS:-0}" = "0" ] && [ -x agent/setup-agents.sh ]; then
         echo
         echo "[6v6] starting Manager + SubAgent layer (set SKIP_AGENTS=1 to skip)..."
-        bash agent/setup-agents.sh
+        # non-fatal: agent 레이어 실패가 set -e 로 up 전체(특히 뒤의 GUI 자동배포)를 중단시키지 않도록.
+        bash agent/setup-agents.sh || \
+            echo "[6v6] WARN: Manager/SubAgent 레이어 구성 실패 — 위 로그 확인. 'bash 6v6.sh agents' 로 재시도 가능. (계속 진행)"
     fi
 
     # Windows 엔드포인트 (옵션 — --with-windows 또는 WITH_WINDOWS=1)
@@ -532,7 +535,7 @@ cmd_status() {
     echo
     echo "  Add to student PC hosts file (/etc/hosts on linux/mac,"
     echo "  C:\\Windows\\System32\\drivers\\etc\\hosts on Windows):"
-    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab"
+    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab"
     echo
     echo "--- SSH (ProxyJump) --------------------------------------------"
     echo "  ssh -p 2204 ccc@$IP            # bastion (jump host)"

@@ -74,10 +74,14 @@ fi
 
 cd "$BASTION_DIR"
 
-# venv
-if [ ! -d .venv/bin ]; then
+# venv — guard on pip (not just bin/) so a partial venv (ensurepip 누락 시 bin/ 만 생성) self-heals.
+if [ ! -x .venv/bin/pip ]; then
     echo "  create venv"
-    python3 -m venv .venv
+    rm -rf .venv
+    if ! python3 -m venv .venv; then
+        echo "  ! venv 생성 실패 — 'sudo apt install -y python3-venv python3-pip' 후 재실행" >&2
+        exit 1
+    fi
 fi
 echo "  install requirements (quiet)"
 .venv/bin/pip install -q -r requirements.txt
