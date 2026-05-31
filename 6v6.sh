@@ -156,6 +156,27 @@ cmd_install() {
         sudo apt-get install -y --no-install-recommends docker-compose-plugin
     fi
 
+    # Configure Docker daemon DNS - prevents "network is unreachable" pull errors
+    # on VMs where /etc/resolv.conf points to a DNS that doesn't resolve docker.io.
+    if [ ! -f /etc/docker/daemon.json ] || ! grep -q '"dns"' /etc/docker/daemon.json 2>/dev/null; then
+        echo "[6v6] (3.5/4) configure Docker daemon DNS (8.8.8.8, 1.1.1.1)"
+        sudo mkdir -p /etc/docker
+        if [ -f /etc/docker/daemon.json ]; then
+            sudo cp /etc/docker/daemon.json /etc/docker/daemon.json.bak.$(date +%s)
+            # Merge dns into existing JSON (best-effort with jq, fallback to overwrite)
+            if command -v jq >/dev/null 2>&1; then
+                sudo jq '. + {"dns":["8.8.8.8","1.1.1.1"]}' /etc/docker/daemon.json | \
+                    sudo tee /etc/docker/daemon.json.new >/dev/null && \
+                    sudo mv /etc/docker/daemon.json.new /etc/docker/daemon.json
+            else
+                echo '{"dns":["8.8.8.8","1.1.1.1"]}' | sudo tee /etc/docker/daemon.json >/dev/null
+            fi
+        else
+            echo '{"dns":["8.8.8.8","1.1.1.1"]}' | sudo tee /etc/docker/daemon.json >/dev/null
+        fi
+        sudo systemctl restart docker 2>/dev/null || true
+    fi
+
     echo "[6v6] (4/4) verify"
     echo "  - docker:         $(docker --version 2>/dev/null || echo MISSING)"
     echo "  - docker compose: $(docker compose version 2>/dev/null | head -1 || echo MISSING)"
@@ -189,6 +210,33 @@ cmd_check_docker() {
     if ! docker compose version >/dev/null 2>&1; then
         echo "[6v6] X 'docker compose' plugin missing."
         echo "      -> Run 'bash 6v6.sh install' to add it."
+        exit 1
+    fi
+}
+
+cmd_check_network() {
+    # Verify outbound connectivity + DNS works for Docker Hub / GitHub.
+    # Without this, `docker compose up` fails mid-pull with confusing errors like
+    # "failed to copy: failed to do request: ... network is unreachable".
+    local fail=0
+    if ! getent hosts registry-1.docker.io >/dev/null 2>&1; then
+        echo "[6v6] X DNS cannot resolve 'registry-1.docker.io'."
+        echo "      Fix:  echo 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf"
+        echo "      or check /etc/systemd/resolved.conf and 'systemctl restart systemd-resolved'."
+        fail=1
+    fi
+    if ! curl -s -o /dev/null -w "%{http_code}" --max-time 8 https://registry-1.docker.io/v2/ 2>/dev/null | grep -qE '^(200|401)$'; then
+        echo "[6v6] X Cannot reach https://registry-1.docker.io (Docker Hub)."
+        echo "      Check VM network: VMware NAT mode + host has internet,"
+        echo "      or corporate proxy: configure /etc/systemd/system/docker.service.d/http-proxy.conf"
+        fail=1
+    fi
+    if ! getent hosts github.com >/dev/null 2>&1; then
+        echo "[6v6] X DNS cannot resolve 'github.com' (secuops-easy GUI repos)."
+        fail=1
+    fi
+    if [ "$fail" = "1" ]; then
+        echo "[6v6] Network preflight failed - fix above and re-run 'bash 6v6.sh up'."
         exit 1
     fi
 }
@@ -271,6 +319,7 @@ cmd_up() {
     [ "${WITH_WINDOWS:-0}" = "1" ] && with_windows=1
 
     cmd_check_docker
+    cmd_check_network
     cmd_check_kernel
     ensure_env
     ensure_ssh_keys
