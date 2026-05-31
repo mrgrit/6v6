@@ -357,6 +357,34 @@ bash 6v6.sh windows logs             # 부팅·OEM 진행 로그
 | syslog forward | 미포함 | bastion+attacker → siem 514/udp |
 | Windows 엔드포인트 | 미포함 | 옵션 `--with-windows` (tiny11 + Sysmon) |
 
+## 트러블슈팅 — `X /dev/kvm missing` (Windows 옵션)
+
+`bash 6v6.sh up --with-windows` 시 발생. 환경별 5단계 순서 (가장 흔한
+**Windows 호스트 → VMware → Linux 게스트 → 6v6** 시나리오 기준):
+
+```
+1. Win 호스트 BIOS → Intel VT-x (or SVM) Enabled
+2. Win 호스트 PowerShell(관리자):
+     bcdedit /set hypervisorlaunchtype off
+   + "Windows 기능": Hyper-V, Virtual Machine Platform, Windows Hypervisor Platform,
+     WSL, Sandbox 모두 해제 → 재부팅
+3. VMware Workstation: Linux VM 종료 → Settings → Processors
+     → ✅ Virtualize Intel VT-x/EPT or AMD-V/RVI
+4. Linux 게스트:
+     sudo modprobe kvm_intel              # 또는 kvm_amd
+     sudo usermod -aG kvm $USER && newgrp kvm
+5. bash 6v6.sh up --with-windows          # 재시도
+```
+
+진단 한 줄 (Linux 게스트에서):
+```bash
+ls -l /dev/kvm; egrep -c '(vmx|svm)' /proc/cpuinfo; lsmod | grep kvm; systemd-detect-virt
+```
+
+상세 4 case 분기 + ESXi 안내는 [`WINDOWS-ENDPOINT.md`](./WINDOWS-ENDPOINT.md#트러블슈팅) 참조.
+KVM 활성 불가하면 `--with-windows` 빼고 `bash 6v6.sh up` 만 — 본 스택 15컨테이너는
+정상 동작 (Windows 관련 lab/lecture step 만 건너뜀).
+
 ## 라이선스
 
 MIT — 자유롭게 학습/수업에서 활용.
