@@ -319,7 +319,7 @@ cmd_up() {
     # Windows 엔드포인트 (옵션 — --with-windows 또는 WITH_WINDOWS=1)
     if [ "$with_windows" = "1" ]; then
         echo
-        echo "[6v6] starting Windows endpoint (6v6-win, dmz 10.20.32.60)..."
+        echo "[6v6] starting Windows endpoint (6v6-win, user zone 10.20.33.60)..."
         echo "      first boot 30-60 min — Windows ISO 다운로드 + 무인설치 + Sysmon/Wazuh/OpenSSH"
         echo "      진행 확인: http://<VM_IP>:8006  /  완료 표식: win-shared/OEM_DONE.txt"
         docker compose -f docker-compose.windows.yml up -d

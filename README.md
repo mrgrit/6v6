@@ -9,22 +9,30 @@
    ┌─────────────────┐     ┌──────────────┐        ┌───────────────────────────┐       ┌─────────────────────┐
    │ 6v6-attacker .202│    │              │        │ 6v6-web         .80       │       │ juiceshop      .81  │
    │ 6v6-bastion  .201│───▶│  6v6-ips     │───────▶│ 6v6-siem(mgr)   .100      │──────▶│ dvwa           .82  │
-   │                  │    │  .2 ↔ dmz.1  │        │ 6v6-wazuh-indexer .110    │       │ neobank        .83  │
-   │                  │    │              │        │ 6v6-wazuh-dashboard .120  │       │ govportal      .84  │
+   │                  │    │  .2 ↔ dmz.1 │        │ 6v6-wazuh-indexer .110    │       │ neobank        .83  │
+   │                  │    │  ↕ user.1   │        │ 6v6-wazuh-dashboard .120  │       │ govportal      .84  │
    └─────────────────┘     └──────────────┘        │ 6v6-portal       .50      │       │ mediforum      .85  │
-            │                      ▲               │ (옵션) 6v6-win   .60      │       │ adminconsole   .86  │
-            ▼                      │               └───────────────────────────┘       │ aicompanion    .87  │
+            │                      ▲               └───────────────────────────┘       │ adminconsole   .86  │
+            ▼                      │                                                    │ aicompanion    .87  │
    ┌──────────────────────────────────┐                       │                        └─────────────────────┘
    │ 6v6-fw   .1 (ext) ↔ .1 (pipe)   │                        │ web 의 Apache vhost 만 int 로 reverse proxy
    │ nftables L3 forward + DNAT      │                        │ (학생/공격자는 int 직접 접근 불가)
    └──────────────────────────────────┘                       ▼
                                                        (7 vuln sites 외부 노출 X)
-   트래픽 흐름: attacker → fw(L3/NAT) → ips(L7 sniff/Suricata) → dmz(web/siem/win) → [web]만 int(vuln)
+
+                                                user 10.20.33.0/24  (옵션 --with-windows)
+                                                ┌────────────────────────────────┐
+                                                │ (옵션) 6v6-win  .60  Windows 11 │  ← ips eth2 (10.20.33.1)
+                                                │  Sysmon + Wazuh agent + OpenSSH │     이 user 구역의 게이트웨이
+                                                └────────────────────────────────┘
+   트래픽 흐름: attacker → fw(L3/NAT) → ips(L7 sniff/Suricata) → dmz(web/siem) | user(win) → [web]만 int(vuln)
 ```
 
-> **Windows 엔드포인트 (옵션, `--with-windows`)** 는 dmz `10.20.32.60` 에 합류 →
-> 같은 dmz 의 wazuh manager(10.20.32.100) 로 Sysmon eventchannel 직통.
-> 공격자 트래픽도 동일하게 `fw → ips` 두 단계 정책 검사를 거쳐 도달.
+> **Windows 엔드포인트 (옵션, `--with-windows`)** 는 별도 `user` 구역 `10.20.33.60` 에 자리한다.
+> `ips` 가 user 구역의 게이트웨이(eth2, 10.20.33.1)를 겸하므로 PC 의 모든 트래픽은 IPS 검사선
+> 위에 올라온다. Wazuh agent 가 dmz 의 wazuh manager(10.20.32.100) 로 Sysmon eventchannel 을
+> 보낸다 (user→ips→dmz 경유). 외부 공격자 → Windows 트래픽도 `fw → ips → user` 정책 검사를
+> 거쳐 도달.
 
 ## 통합 로그 (Wazuh — agent + syslog 두 패러다임)
 
@@ -129,11 +137,12 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 
 | 컨테이너 | Zone / IP | 역할 |
 |----------|-----------|------|
-| 6v6-win | dmz 10.20.32.60 | Windows 11 tiny11 사용자 PC — Sysmon + Wazuh agent + OpenSSH 자동계측 |
+| 6v6-win | user 10.20.33.60 | Windows 11 tiny11 사용자 PC — Sysmon + Wazuh agent + OpenSSH 자동계측 |
 
-> Windows 도 **dmz** 에 합류하여 같은 zone 의 wazuh manager(10.20.32.100) 로 직통 enroll.
-> 공격자가 Windows 를 노려도 트래픽은 `attacker(ext) → fw → ips → win(dmz)` 정책 경유 —
-> base 와 동일한 방어선 적용.
+> Windows 는 별도 **user** 구역에 있고, `ips` 가 user 구역의 게이트웨이(eth2 10.20.33.1)를
+> 겸하여 user↔dmz 트래픽도 IPS 검사선 위에 올라옵니다. Wazuh agent 는 dmz 의 wazuh manager
+> (10.20.32.100) 로 user→ips→dmz 경유로 enroll. 공격자가 Windows 를 노려도 트래픽은
+> `attacker(ext) → fw → ips → win(user)` 정책 경유 — base 와 동일한 방어선 적용.
 
 배포 방법 (두 가지 동등):
 
@@ -223,7 +232,7 @@ ssh ips        # 10.20.31.2   (IPS — pipe 쪽 IP)
 ssh web        # 10.20.32.80  (web — dmz 쪽 IP)
 ssh siem       # 10.20.32.100 (Wazuh manager)
 ssh attacker   # 10.20.30.202
-ssh win        # 10.20.32.60  (Windows, 옵션 — PowerShell)
+ssh win        # 10.20.33.60  (Windows, 옵션 user 구역 — PowerShell)
 ```
 
 ### 3. 컨테이너 직접 (VM 호스트에서, 디버그/관리)

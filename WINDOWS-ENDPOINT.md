@@ -1,16 +1,18 @@
-# Windows 엔드포인트 — 6v6 의 사용자 PC (10.20.32.60)
+# Windows 엔드포인트 — 6v6 의 사용자 PC (user 구역 10.20.33.60)
 
-6v6 인프라에 **Windows 11 (tiny11) 사용자 PC** 1대를 dmz zone (10.20.32.60) 에 추가한다.
-**dockurr/windows** 컨테이너로 KVM 위에서 동작하며, 첫 부팅 시 `win-oem/install.bat` 가 자동
-실행되어 **Sysmon + Wazuh agent + OpenSSH** 가 모두 설치·구성된다 (사용자가 마우스로 만질 게
-거의 없음).
+6v6 인프라에 **Windows 11 (tiny11) 사용자 PC** 1대를 별도 **user 구역** (10.20.33.0/24) 의
+10.20.33.60 에 추가한다. **dockurr/windows** 컨테이너로 KVM 위에서 동작하며, 첫 부팅 시
+`win-oem/install.bat` 가 자동 실행되어 **Sysmon + Wazuh agent + OpenSSH** 가 모두 설치·구성되고,
+**정적 라우팅** 으로 다른 4 zone(ext/pipe/dmz/int) 은 모두 ips(10.20.33.1) 경유로 도달하게 된다
+(사용자가 마우스로 만질 게 거의 없음).
 
 ## 목적
 
 - secuops / soc / attack / secuops-easy 4 과목의 **endpoint 측 가시화** (EDR 학습) 무대.
 - victim 직원 PC (피싱·다운로드·우발 행위 시뮬) + analyst 보안담당 PC 두 페르소나.
-- Wazuh manager (10.20.32.100) 에 `6v6-win` agent 로 자동 enroll → Sysmon EID 1/3/22/11 + Security
-  4624/4625 가 같은 SIEM dashboard 로 흐른다.
+- 보안 모범사례에 맞춘 zone 분리 — 외부 노출 서버(dmz)와 사용자 PC(user)는 다른 영역.
+- Wazuh manager (dmz 10.20.32.100) 에 `6v6-win` agent 로 자동 enroll → user→ips→dmz 경유로
+  Sysmon EID 1/3/22/11 + Security 4624/4625 가 같은 SIEM dashboard 로 흐른다.
 
 ## 요구 사항
 
@@ -63,7 +65,7 @@ docker exec 6v6-siem /var/ossec/bin/agent_control -l | grep 6v6-win
 docker exec 6v6-siem grep -c "6v6-win" /var/ossec/logs/archives/archives.json | head -1
 
 # 3) SSH 로 Windows 접속 (관리/실습용)
-sshpass -p ccc ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ccc@10.20.32.60 'Get-Service Sysmon64 | Select-Object Status'
+sshpass -p ccc ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ccc@10.20.33.60 'Get-Service Sysmon64 | Select-Object Status'
 # → Running 출력
 ```
 
@@ -82,10 +84,12 @@ SIEM 도달 채널: `Microsoft-Windows-Sysmon/Operational`, `Security`, `System`
 | ⑦ Wazuh 재기동 | 채널 통합 적용 |
 | 종료 | `\\host.lan\Data\OEM_DONE.txt` 생성 (호스트에서 완료 확인 가능) |
 
-## 전제 (둘 다 충족돼야 등록됨)
+## 전제 (셋 다 충족돼야 등록됨)
 
 - 매니저 `authd` 가동 + 1515 listen (Wazuh 자동등록).
-- Windows 가 매니저 (dmz 10.20.32.100) 에 도달 가능한 세그먼트 (=dmz). int 는 존 격리로 불가.
+- `6v6-user` 네트워크 존재 + `6v6-ips` 가 user(10.20.33.1) 인터페이스를 가짐 (compose 기준).
+- Windows 컨테이너 내부에 정적 라우팅 (10.20.32.0/24 → 10.20.33.1) 적용. install.bat 가 부팅 시
+  자동 등록. 라우팅 없으면 manager 도달 실패 → enroll X.
 
 > ⚠️ **매니저 재시작 전 `/var/ossec/bin/wazuh-analysisd -t` 로 룰 검증 필수.**
 > `local_rules.xml` 의 root 가 `<ruleset>` 로 잘못되어 있을 경우 매니저 다운 유발 사례 있음
