@@ -126,6 +126,27 @@ manager 의 응답은 source IP `10.20.32.1` (ips) 로 옴 → ips conntrack 가
 
 ## 트러블슈팅
 
+### KVM 관련 — `bash 6v6.sh up --with-windows` 시 `X /dev/kvm missing` 에러
+
+원인 진단 한 줄:
+```bash
+ls -l /dev/kvm; egrep -c '(vmx|svm)' /proc/cpuinfo; lsmod | grep kvm; systemd-detect-virt
+```
+
+진단 결과 별 처치:
+
+| 진단 | 의미 | 처치 |
+|------|------|------|
+| `/dev/kvm` 있지만 권한 X (`Permission denied`) | 모듈/CPU OK, user 권한만 부족 | `sudo usermod -aG kvm $USER && newgrp kvm` |
+| `vmx/svm` count > 0, `lsmod` 에 kvm 없음 | CPU 지원 OK, 모듈 미로드 (패키지 미설치) | `sudo apt install -y qemu-kvm && sudo modprobe kvm_intel` (Intel) 또는 `kvm_amd` (AMD) |
+| `vmx/svm` count = 0, `systemd-detect-virt` ≠ none | 호스트가 VM 안 (VMware/VirtualBox 등), nested virtualization 꺼짐 | **호스트 hypervisor** 설정. VMware: VM 종료 → 설정 → CPU → "Virtualize Intel VT-x/EPT or AMD-V/RVI" 체크 → 재시작 |
+| `vmx/svm` count = 0, baremetal | BIOS 가상화 비활성 | 재부팅 → BIOS/UEFI → "Intel Virtualization Technology" 또는 "SVM Mode" 활성 → 저장 후 재부팅 |
+
+> KVM 못 켜는 환경이면 **Windows 만 빼고 본 스택 15컨테이너는 정상 동작**:
+> `bash 6v6.sh up` (--with-windows 빼고). Windows 관련 lab/lecture step 만 건너뛰면 됨.
+
+### 그 외
+
 | 증상 | 처치 |
 |------|------|
 | OEM 안 돌아간 채로 Windows 가 뜸 | `docker compose -f docker-compose.windows.yml down -v` → `win-storage/` 삭제 → 재시작 (디스크 새로 만들어야 OEM 재실행) |
