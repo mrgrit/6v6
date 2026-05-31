@@ -10,16 +10,22 @@
    │ attacker │───▶│  secu  │───▶│  web   │───▶│ siem   │
    │  10.202  │    │  10.1  │    │ 10.80  │    │ 10.100 │
    └──────────┘    └────────┘    └────────┘    └────────┘
-                       │            │
-                       │            ├─ juice (10.81)   ┐
-                       │            ├─ dvwa  (10.82)   │
-                       │            ├─ neobank (10.83) │
+                       │            │              ▲
+                       │            ├─ juice (10.81)   ┐         │
+                       │            ├─ dvwa  (10.82)   │         │
+                       │            ├─ neobank (10.83) │         │
                        │            ├─ govportal(10.84)│ 외부 노출 X
                        │            ├─ mediforum(10.85)│ web 만 reverse proxy
-                       │            ├─ admin (10.86)   │
-                       │            └─ ai (10.87)      ┘
-                       │
-                       └─ Suricata sniff + Wazuh agent
+                       │            ├─ admin (10.86)   │         │
+                       │            └─ ai (10.87)      ┘         │
+                       │                                          │
+                       └─ Suricata sniff + Wazuh agent            │
+                                                                  │
+       옵션 — dmz zone 10.20.32.0/24 (--with-windows)             │
+       ┌────────────────────────────────────────────────┐         │
+       │  6v6-win  Windows 11 tiny11  10.20.32.60       │─────────┘
+       │  Sysmon + Wazuh agent + OpenSSH 자동계측       │  Wazuh enroll
+       └────────────────────────────────────────────────┘  → siem 10.20.32.100
 ```
 
 ## 통합 로그 (Wazuh — agent + syslog 두 패러다임)
