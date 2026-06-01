@@ -63,7 +63,8 @@ fi
 
 echo "[6v6-agents] (2/3) prepare bastion repo (Manager)"
 
-BASTION_DIR="${BASTION_DIR:-$HOME/bastion}"
+# HOME 이 비어있는 환경(systemd 등)에서 set -u 로 죽지 않도록 fallback.
+BASTION_DIR="${BASTION_DIR:-${HOME:-/root}/bastion}"
 if [ ! -d "$BASTION_DIR" ]; then
     echo "  clone bastion repo → $BASTION_DIR"
     git clone https://github.com/mrgrit/bastion.git "$BASTION_DIR"

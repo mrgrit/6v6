@@ -188,7 +188,15 @@ RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만 (`up --with-wi
 | `http://ai.6v6.lab/` | AICompanion | OWASP LLM Top 10 (mock LLM) |
 | `http://portal.6v6.lab/` | **관리 포털** | 컨테이너 / 네트워크 / 로그 / WAF / IDS / Audit / Agent |
 | `http://siem.6v6.lab/` | **SIEM (Wazuh lite)** | 알림 + Top rule + level 분포 |
-| `http://bastion.6v6.lab/health` | Bastion API | 헬스 체크 |
+| `http://bastion.6v6.lab/health` | Bastion API | 헬스 체크 (웹 UI 없음 — `/health` 만) |
+| `http://fw-gui.6v6.lab/` | **방화벽 콘솔** (nftables 교육 GUI) | secuops-easy 특강. fw HAProxy 경유 |
+| `http://ips-gui.6v6.lab/` | **IPS 콘솔** (Suricata 교육 GUI) | secuops-easy 특강 |
+| `http://waf-gui.6v6.lab/` | **WAF 콘솔** (ModSecurity 교육 GUI) | secuops-easy 특강 |
+
+> **secuops-easy GUI 3종**(fw-gui/ips-gui/waf-gui)은 `bash 6v6.sh up` 시 기본 자동 배포된다
+> (`SKIP_SECUOPS_EASY=1` 로 생략). 이 콘솔들은 컨테이너 내부 프로세스라 재부팅 시
+> `6v6-restore.service`(systemd)가 자동 재주입한다 — `bash 6v6.sh up` 이 이 서비스를 자동 활성화.
+> 수동 복구는 `bash 6v6.sh restore`.
 
 > **직접 포트 접근도 살아있음** (관리/디버그용): `http://<VM_IP>:8000/` (portal),
 > `http://<VM_IP>:5601/` (siem), `http://<VM_IP>:9100/health` (bastion).

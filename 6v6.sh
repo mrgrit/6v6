@@ -384,6 +384,12 @@ cmd_up() {
     if [ "${SKIP_SECUOPS_EASY:-0}" = "0" ] && [ -x secuops-easy-deploy/deploy_all.sh ]; then
         cmd_secuops_easy_deploy
     fi
+
+    # 재부팅 후에도 in-container GUI/SubAgent + Manager 가 자동 복구되도록 boot 서비스 활성 (idempotent).
+    # SKIP_BOOT_PERSIST=1 로 비활성.
+    if [ "${SKIP_BOOT_PERSIST:-0}" = "0" ]; then
+        cmd_enable_boot || echo "[6v6] WARN: boot 자동복구 서비스 활성 실패 (계속 진행)"
+    fi
 }
 
 cmd_secuops_easy_deploy() {
@@ -403,6 +409,80 @@ cmd_secuops_easy_deploy() {
     done
     bash secuops-easy-deploy/deploy_all.sh 2>&1 | sed 's/^/  /'
     echo "[6v6] secuops-easy GUI deployed — http://fw-gui.6v6.lab / ips-gui / waf-gui"
+}
+
+cmd_restore() {
+    # 재부팅 복구 — systemd 6v6-restore.service 가 boot 시 호출.
+    # 컨테이너는 restart:unless-stopped 로 자동 복귀하지만, docker exec 로 띄운
+    # in-container GUI(:8080)/SubAgent(:8002) 와 호스트 Manager(:9200) 는 휘발되므로
+    # 이 명령이 그 ephemeral 레이어를 재주입한다.
+    echo "[6v6] restore: docker daemon 대기..."
+    local i
+    for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 2; done
+    echo "[6v6] restore: fw/ips/web 컨테이너 ready 대기 (max 180s)..."
+    for i in $(seq 1 60); do
+        if docker exec 6v6-fw test -d /etc/haproxy 2>/dev/null && \
+           docker exec 6v6-ips test -f /etc/suricata/suricata.yaml 2>/dev/null && \
+           docker exec 6v6-web test -d /etc/modsecurity 2>/dev/null; then
+            break
+        fi
+        sleep 3
+    done
+    # GUI 3종 재주입
+    if [ "${SKIP_SECUOPS_EASY:-0}" = "0" ] && [ -x secuops-easy-deploy/deploy_all.sh ]; then
+        bash secuops-easy-deploy/deploy_all.sh 2>&1 | sed 's/^/  /' || \
+            echo "[6v6] WARN: GUI restore 실패"
+    fi
+    # SubAgent + Manager 재주입
+    if [ "${SKIP_AGENTS:-0}" = "0" ] && [ -x agent/setup-agents.sh ]; then
+        bash agent/setup-agents.sh || echo "[6v6] WARN: agent restore 실패"
+    fi
+    echo "[6v6] restore complete — GUI/SubAgent/Manager 재주입 완료."
+}
+
+cmd_enable_boot() {
+    # 재부팅 시 cmd_restore 가 자동 실행되도록 systemd 서비스 설치/활성 (idempotent).
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo "[6v6] systemd 없음 — boot 자동복구 skip"
+        return 0
+    fi
+    local self repo unit
+    repo="$(cd "$(dirname "$0")" && pwd)"
+    self="$repo/$(basename "$0")"
+    unit=/etc/systemd/system/6v6-restore.service
+    sudo tee "$unit" >/dev/null <<EOF
+[Unit]
+Description=6v6 restore ephemeral layer (in-container GUIs + SubAgents + host Manager) after boot
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# KillMode=process: ExecStart 종료 후에도 nohup 으로 띄운 호스트 Manager(:9200) 가
+# 서비스 cgroup 정리로 함께 죽지 않도록 메인 프로세스만 관리.
+KillMode=process
+# HOME: systemd 환경엔 없어서 setup-agents.sh 의 \$HOME/bastion (set -u) 가 죽는다 → 명시.
+Environment=HOME=/root
+WorkingDirectory=$repo
+ExecStart=/usr/bin/env bash $self restore
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable 6v6-restore.service >/dev/null 2>&1
+    echo "[6v6] boot 자동복구 활성 — 6v6-restore.service (재부팅 시 GUI/SubAgent/Manager 자동 재주입)"
+}
+
+cmd_disable_boot() {
+    command -v systemctl >/dev/null 2>&1 || return 0
+    sudo systemctl disable 6v6-restore.service >/dev/null 2>&1 || true
+    sudo rm -f /etc/systemd/system/6v6-restore.service
+    sudo systemctl daemon-reload
+    echo "[6v6] boot 자동복구 비활성 — 6v6-restore.service 제거"
 }
 
 cmd_win_route_fix() {
@@ -671,6 +751,12 @@ Usage: bash 6v6.sh <command>
   logs <svc>  follow container logs
   windows {up|down|destroy|status|logs}
             manage Windows endpoint separately (after base is up)
+  agents [--skip]   (re)deploy SubAgent layer + host Manager (:9200)
+  restore   재부팅 후 ephemeral 레이어(in-container GUI/SubAgent + Manager) 재주입.
+            보통 boot 시 6v6-restore.service 가 자동 호출 (수동 실행도 가능).
+  enable-boot / disable-boot
+            재부팅 자동복구 systemd 서비스(6v6-restore.service) 활성/비활성.
+            'up' 시 자동 활성 (SKIP_BOOT_PERSIST=1 로 생략).
 
 Quick start (fresh Linux VM):
   bash 6v6.sh install                # auto-install docker + helpers
@@ -696,6 +782,9 @@ case "${1:-help}" in
     smoke)    cmd_smoke ;;
     logs)     shift; cmd_logs "$@" ;;
     agents)   shift; cmd_agents "$@" ;;
+    restore)      cmd_restore ;;
+    enable-boot)  cmd_enable_boot ;;
+    disable-boot) cmd_disable_boot ;;
     windows)  shift; cmd_windows "$@" ;;
     help|-h|--help) cmd_help ;;
     *) cmd_help; exit 1 ;;
