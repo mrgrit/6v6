@@ -324,6 +324,30 @@ services:
     depends_on: [siem, web, ips]
     restart: unless-stopped
 
+  # ╭─ (옵션) 룰 무장 provisioner — §8-3, write 서비스, 기본 OFF ──╮
+  # read-only 원칙의 유일한 예외. Assessor 와 분리된 별개 서비스이며 compose profile
+  # `provisioner` 미활성(기본) 이면 생성 안 됨. SKIP_PROVISIONER=0 으로만 기동.
+  # named 룰 템플릿 화이트리스트만 manager 의 전용 파일에 무장/회수(다른 룰 불변).
+  provisioner:
+    container_name: 6v6-provisioner
+    profiles: [provisioner]
+    build:
+      context: .
+      dockerfile: assessor/Dockerfile
+    command: ["uvicorn", "assessor.provisioner:app", "--host", "0.0.0.0", "--port", "8000"]
+    hostname: provisioner
+    networks:
+      dmz:
+        ipv4_address: 10.20.32.56
+        aliases: [provisioner]
+    environment:
+      API_KEY: ${API_KEY:-ccc-api-key-2026}
+    volumes:
+      # write 서비스 — siem 에 exec 하여 전용 룰 파일 작성/회수(docker.sock 은 root 등가).
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on: [siem]
+    restart: unless-stopped
+
   # ╭─ int tier: vuln endpoints (behind WAF) ─────────────────╮
   juiceshop:
     container_name: 6v6-juiceshop

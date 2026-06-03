@@ -18,14 +18,24 @@ from assessor import targets
 
 
 class FakeExecutor:
-    """argv 를 기록하고 정해진 결과를 반환. 셸이 개입하지 않음을 검증하는 데 사용."""
+    """argv 를 기록하고 정해진 결과를 반환. 셸이 개입하지 않음을 검증하는 데 사용.
 
-    def __init__(self, result: ExecResult | None = None):
+    osquery_rows=None → osqueryi 부재(exit 127) 시뮬레이션(→ docker.sock 폴백 경로 테스트).
+    osquery_rows=리스트 → osqueryi --json 가 그 rows 를 반환(→ osquery 경로 테스트).
+    """
+
+    def __init__(self, result: ExecResult | None = None, osquery_rows=None):
         self.calls: list[tuple[str, list[str]]] = []
         self._result = result or ExecResult(0, "", "")
+        self._osquery_rows = osquery_rows
 
     def exec(self, container, argv, timeout=15):
         self.calls.append((container, argv))
+        if argv and argv[0] == "osqueryi":
+            if self._osquery_rows is None:
+                return ExecResult(127, "", "osqueryi: not found")
+            import json as _j
+            return ExecResult(0, _j.dumps(self._osquery_rows), "")
         return self._result
 
 
@@ -57,22 +67,33 @@ class TargetsTest(unittest.TestCase):
 
 # ─── 호스트 검사: argv 템플릿 합성 ────────────────────────────────────────────
 class HostCheckTest(unittest.TestCase):
-    def test_file_exists_argv_no_shell(self):
-        ex = FakeExecutor(ExecResult(0, "/etc/x|size=10|mtime=now", ""))
+    def test_file_exists_osquery(self):
+        # osquery 경로 — file 테이블 rows 반환 시 passed
+        ex = FakeExecutor(osquery_rows=[{"path": "/etc/apache2/apache2.conf",
+                                         "size": "100", "mtime": "x"}])
         r = run_check({"id": "c1", "type": "file_exists", "target": "web",
                        "params": {"path": "/etc/apache2/apache2.conf"}}, ex, None)
         self.assertTrue(r["passed"])
+        self.assertEqual(r["raw"]["engine"], "osquery")
         cont, argv = ex.calls[0]
         self.assertEqual(cont, "6v6-web")
-        # argv 는 list — 셸 해석 없음. path 는 단일 인자로 전달.
-        self.assertEqual(argv[0], "stat")
-        self.assertIn("/etc/apache2/apache2.conf", argv)
+        self.assertEqual(argv[0], "osqueryi")          # SQL 은 단일 argv(셸 없음)
+        self.assertIn("/etc/apache2/apache2.conf", argv[2])   # path 가 SQL 리터럴에 안전 삽입
 
-    def test_file_exists_not_found(self):
-        ex = FakeExecutor(ExecResult(1, "", "No such file"))
+    def test_file_exists_osquery_not_found(self):
+        ex = FakeExecutor(osquery_rows=[])             # 빈 결과 → not found
         r = run_check({"id": "c1", "type": "file_exists", "target": "web",
                        "params": {"path": "/nope"}}, ex, None)
         self.assertFalse(r["passed"])
+
+    def test_file_exists_fallback_to_exec(self):
+        # osquery 부재(attacker 등) → docker.sock stat 폴백
+        ex = FakeExecutor(ExecResult(0, "/etc/x|size=10|mtime=now", ""), osquery_rows=None)
+        r = run_check({"id": "c1", "type": "file_exists", "target": "attacker",
+                       "params": {"path": "/etc/hostname"}}, ex, None)
+        self.assertTrue(r["passed"])
+        self.assertEqual(r["raw"]["engine"], "exec")
+        self.assertEqual(ex.calls[-1][1][0], "stat")   # 마지막 호출은 stat 폴백
 
     def test_file_contains_fixed_vs_regex(self):
         ex = FakeExecutor(ExecResult(0, "12:SecRuleEngine On", ""))
@@ -85,25 +106,41 @@ class HostCheckTest(unittest.TestCase):
                    "params": {"path": "/etc/x", "regex": "Sec.*On"}}, ex2, None)
         self.assertIn("-E", ex2.calls[0][1])  # 정규식
 
-    def test_port_listening_parse(self):
-        ss_out = ("State  Recv-Q Send-Q Local Address:Port Peer Address:Port\n"
-                  "LISTEN 0      128    0.0.0.0:80        0.0.0.0:*\n"
-                  "LISTEN 0      128    0.0.0.0:22        0.0.0.0:*\n")
-        ex = FakeExecutor(ExecResult(0, ss_out, ""))
+    def test_port_listening_osquery(self):
+        ex = FakeExecutor(osquery_rows=[{"port": "80", "protocol": "6", "address": "0.0.0.0"}])
         r = run_check({"id": "c", "type": "port_listening", "target": "web",
                        "params": {"port": 80}}, ex, None)
         self.assertTrue(r["passed"])
-        ex2 = FakeExecutor(ExecResult(0, ss_out, ""))
+        ex2 = FakeExecutor(osquery_rows=[])            # 빈 결과 → 미리슨
         r2 = run_check({"id": "c", "type": "port_listening", "target": "web",
                         "params": {"port": 8080}}, ex2, None)
         self.assertFalse(r2["passed"])
 
-    def test_process_running(self):
-        ex = FakeExecutor(ExecResult(0, "123 /usr/sbin/apache2 -D FOREGROUND", ""))
+    def test_port_listening_fallback_ss(self):
+        ss_out = ("State  Recv-Q Send-Q Local Address:Port Peer Address:Port\n"
+                  "LISTEN 0      128    0.0.0.0:80        0.0.0.0:*\n")
+        ex = FakeExecutor(ExecResult(0, ss_out, ""), osquery_rows=None)
+        r = run_check({"id": "c", "type": "port_listening", "target": "attacker",
+                       "params": {"port": 80}}, ex, None)
+        self.assertTrue(r["passed"])
+        self.assertEqual(ex.calls[-1][1][0], "ss")
+
+    def test_process_running_osquery(self):
+        ex = FakeExecutor(osquery_rows=[{"pid": "1", "name": "apache2",
+                                         "cmdline": "/usr/sbin/apache2 -D FOREGROUND"}])
         r = run_check({"id": "c", "type": "process_running", "target": "web",
                        "params": {"pattern": "apache2"}}, ex, None)
         self.assertTrue(r["passed"])
-        self.assertIn("apache2", ex.calls[0][1])
+        sql = ex.calls[0][1][2]
+        self.assertIn("apache2", sql)                  # SQL LIKE 에 패턴 삽입
+        self.assertIn("osqueryi", sql)                 # self-match 방지(name != 'osqueryi')
+
+    def test_process_running_fallback_pgrep(self):
+        ex = FakeExecutor(ExecResult(0, "123 nmap -sS", ""), osquery_rows=None)
+        r = run_check({"id": "c", "type": "process_running", "target": "attacker",
+                       "params": {"pattern": "nmap"}}, ex, None)
+        self.assertTrue(r["passed"])
+        self.assertEqual(ex.calls[-1][1][0], "pgrep")
 
     def test_log_contains_python_filter(self):
         ex = FakeExecutor(ExecResult(0, "line a\nALERT sqli here\nline b\n", ""))
@@ -152,6 +189,15 @@ class SecurityRejectTest(unittest.TestCase):
 
     def test_missing_params(self):
         self._err({"id": "c", "type": "file_exists", "target": "web", "params": {}})
+
+    def test_osquery_sql_quote_escaped(self):
+        # pattern 에 작은따옴표가 와도 SQL 리터럴이 '' 로 이스케이프(osquery read-only)
+        ex = FakeExecutor(osquery_rows=[])
+        run_check({"id": "c", "type": "process_running", "target": "web",
+                   "params": {"pattern": "a' OR '1'='1"}}, ex, None)
+        sql = ex.calls[0][1][2]
+        self.assertNotIn("a' OR", sql)          # 원문 그대로 들어가지 않음
+        self.assertIn("a'' OR", sql)            # 이스케이프됨
 
     def test_no_exec_on_rejection(self):
         # 거부된 요청은 컨테이너 exec 가 일어나지 않아야 함

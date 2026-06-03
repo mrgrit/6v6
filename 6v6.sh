@@ -357,6 +357,11 @@ cmd_up() {
         PROFILES="--profile assessor"
         echo "[6v6] Assessor 평가 수집 레이어 활성 (set SKIP_ASSESSOR=1 to disable)"
     fi
+    # (옵션) 룰 무장 provisioner — write 표면이라 기본 OFF. SKIP_PROVISIONER=0 으로만 활성.
+    if [ "${SKIP_PROVISIONER:-1}" = "0" ]; then
+        PROFILES="$PROFILES --profile provisioner"
+        echo "[6v6] (옵션) 룰 무장 provisioner 활성 — WRITE 서비스 (기본 OFF; SKIP_PROVISIONER=1 로 비활성)"
+    fi
     docker compose $COMPOSE_FILES $PROFILES build
     docker compose $COMPOSE_FILES $PROFILES up -d
     sleep 3   # let docker create networks + bridges before we tweak iptables
@@ -597,7 +602,7 @@ cmd_status() {
     echo " 6v6 Lab Environment — VM IP: $IP"
     echo "================================================================"
     echo
-    docker compose --profile assessor ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+    docker compose --profile assessor --profile provisioner ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
     # Windows 엔드포인트 (옵션) — base compose 와 분리돼 있어 별도로 보여줌
     if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
         docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' --filter name=^6v6-win$ | tail -n +2

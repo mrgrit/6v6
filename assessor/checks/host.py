@@ -1,10 +1,13 @@
-"""호스트 상태 검사 — docker.sock 로 대상 컨테이너에 read-only argv exec.
+"""호스트 상태 검사 — osquery(상태 단언) 우선 + docker.sock exec(폴백/그 외).
 
-모든 명령은 고정 템플릿 + 화이트리스트 파라미터로만 합성한다(base.py 참조).
-부작용 0 — test/stat/grep/sha256sum/pgrep/ss/tail 만 사용.
+§4.3(a): 파일/프로세스/포트 같은 상태 단언은 **osquery SQL**(read-only, 가장 안전)로
+질의하고, osquery 가 없거나(attacker/취약웹) 안 되는 것(셸 빌트인·임의 텍스트·grep·
+nft 등)은 docker.sock 로 고정 argv 만 exec 한다. 둘 다 부작용 0.
+모든 파라미터는 화이트리스트(base.py)를 통과해야 한다.
 """
 from __future__ import annotations
 
+import json as _json
 from typing import Any
 
 from . import base
@@ -23,16 +26,42 @@ def _container_for(spec: dict[str, Any], default: str | None = None) -> str:
         raise CheckError(str(e))
 
 
+# ─── osquery 헬퍼 (read-only SQL) ────────────────────────────────────────────
+def _sql_lit(s: str) -> str:
+    """SQL 문자열 리터럴 — 작은따옴표 이스케이프(osquery 는 read-only 라 주입해도 write 불가)."""
+    return "'" + str(s).replace("'", "''") + "'"
+
+
+def _osquery(ex: Executor, container: str, sql: str):
+    """osqueryi --json 실행 → rows(list[dict]). osquery 미설치/실패면 None(→ 폴백)."""
+    r = ex.exec(container, ["osqueryi", "--json", sql])
+    if r.exit_code != 0 or not r.stdout.strip():
+        # exit 0 + 빈 결과는 "[]" 를 내므로, 빈 stdout 은 osqueryi 부재(127 등)로 간주
+        if r.exit_code != 0:
+            return None
+    try:
+        return _json.loads(r.stdout or "[]")
+    except Exception:
+        return None
+
+
 # ─── file_exists {path, container} ───────────────────────────────────────────
 def file_exists(spec, ex: Executor):
     p = spec["params"]
     path = base.validate_path(p.get("path"))
     cont = _container_for(spec)
-    # stat: 존재하면 exit 0 + 메타. argv 직접 실행 → 주입 불가.
+    # (i) osquery 우선 — file 테이블(read-only SQL). path 는 [A-Za-z0-9._-/] 만 허용돼 주입 불가.
+    rows = _osquery(ex, cont, f"SELECT path, size, mtime FROM file WHERE path={_sql_lit(path)}")
+    if rows is not None:
+        passed = len(rows) > 0
+        ev = (f"{rows[0].get('path')}|size={rows[0].get('size')}|mtime={rows[0].get('mtime')}"
+              if passed else f"not found: {path}")
+        return base.ok(spec["id"], passed, ev, {"engine": "osquery", "container": cont})
+    # (ii) 폴백 — docker.sock stat
     r = ex.exec(cont, ["stat", "-c", "%n|size=%s|mtime=%y", "--", path])
     passed = r.exit_code == 0
     ev = r.stdout.strip() if passed else f"not found: {path}"
-    return base.ok(spec["id"], passed, ev, {"exit_code": r.exit_code, "container": cont})
+    return base.ok(spec["id"], passed, ev, {"engine": "exec", "exit_code": r.exit_code, "container": cont})
 
 
 # ─── file_contains {path, pattern|regex, container} ──────────────────────────
@@ -82,11 +111,24 @@ def process_running(spec, ex: Executor):
     if pat.startswith("-"):
         raise CheckError("name|pattern 은 '-' 로 시작 불가")
     cont = _container_for(spec)
-    # pgrep -a -f: cmdline 전체 매칭 + 매치된 pid/cmdline 출력. exit 0 = 실행 중.
+    # (i) osquery 우선 — processes 테이블(name/cmdline LIKE). read-only.
+    # ★ osqueryi 자기 프로세스 제외 — 질의 SQL 에 pat 이 들어가 cmdline 에 self-match 되는
+    #   false positive 방지(name != 'osqueryi').
+    like = _sql_lit(f"%{pat}%")
+    rows = _osquery(ex, cont,
+                    f"SELECT pid, name, cmdline FROM processes "
+                    f"WHERE (cmdline LIKE {like} OR name LIKE {like}) "
+                    f"AND name != 'osqueryi' LIMIT 5")
+    if rows is not None:
+        passed = len(rows) > 0
+        ev = (f"pid={rows[0].get('pid')} {rows[0].get('name')}: {rows[0].get('cmdline','')[:120]}"
+              if passed else f"no process matching {pat!r}")
+        return base.ok(spec["id"], passed, ev, {"engine": "osquery", "container": cont})
+    # (ii) 폴백 — docker.sock pgrep
     r = ex.exec(cont, ["pgrep", "-a", "-f", pat])
     passed = r.exit_code == 0
     ev = r.stdout.strip() if passed else f"no process matching {pat!r}"
-    return base.ok(spec["id"], passed, ev, {"exit_code": r.exit_code, "container": cont})
+    return base.ok(spec["id"], passed, ev, {"engine": "exec", "exit_code": r.exit_code, "container": cont})
 
 
 # ─── port_listening {port, container} ────────────────────────────────────────
@@ -94,7 +136,16 @@ def port_listening(spec, ex: Executor):
     p = spec["params"]
     port = base.validate_port(p.get("port"))
     cont = _container_for(spec)
-    # ss -ltn: 헤더 + LISTEN 소켓. python 에서 로컬주소 컬럼 끝이 :port 인 라인만 매칭(주입 면역).
+    # (i) osquery 우선 — listening_ports 테이블. port 는 정수 검증됨.
+    rows = _osquery(ex, cont,
+                    f"SELECT port, protocol, address FROM listening_ports WHERE port={port}")
+    if rows is not None:
+        passed = len(rows) > 0
+        ev = (f"listening :{port} proto={rows[0].get('protocol')} addr={rows[0].get('address')}"
+              if passed else f"port {port} not listening")
+        return base.ok(spec["id"], passed, ev,
+                       {"engine": "osquery", "container": cont, "matches": len(rows)})
+    # (ii) 폴백 — docker.sock ss -ltn
     r = ex.exec(cont, ["ss", "-ltn"])
     matched = []
     for ln in r.stdout.splitlines():
@@ -106,7 +157,7 @@ def port_listening(spec, ex: Executor):
                 break
     passed = bool(matched)
     ev = matched[0] if passed else f"port {port} not listening"
-    return base.ok(spec["id"], passed, ev, {"container": cont, "matches": len(matched)})
+    return base.ok(spec["id"], passed, ev, {"engine": "exec", "container": cont, "matches": len(matched)})
 
 
 # ─── log_contains {log, pattern, since_sec?, container?} ─────────────────────

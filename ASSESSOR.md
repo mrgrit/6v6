@@ -20,9 +20,11 @@
 | 인증 | `X-API-Key` (env `API_KEY`, 기본 `ccc-api-key-2026`) |
 | 마운트(전부 read-only) | `/var/run/docker.sock`, `wazuh-manager-logs`, `ips-suricata-logs`, `web-apache-logs` |
 | 토글 | `SKIP_ASSESSOR=1 bash 6v6.sh up` → 생성 안 함(base 무영향) |
+| (옵션) provisioner | `6v6-provisioner` (dmz `10.20.32.56`) — write 서비스, **기본 OFF**(`SKIP_PROVISIONER=0` 으로만 기동). §10 |
 
 Assessor 는 compose profile `assessor` 로 묶여 있어 `bash 6v6.sh up` 이 기본 활성화하고,
-`SKIP_ASSESSOR=1` 이면 profile 미활성 → 컨테이너 자체가 생성되지 않는다.
+`SKIP_ASSESSOR=1` 이면 profile 미활성 → 컨테이너 자체가 생성되지 않는다. (옵션 provisioner 는
+profile `provisioner` 로 분리되어 기본 미생성.)
 
 ---
 
@@ -131,15 +133,23 @@ exec 할지는 Assessor 내부 맵이 결정한다 — **클라이언트는 토�
 
 ## 5. check type 레퍼런스 (전부 읽기 전용)
 
-### 호스트 상태 — docker.sock exec
-| type | params | passed 조건 | 합성 명령(argv) |
+### 호스트 상태 — osquery 우선 + docker.sock exec
+상태 단언(파일/프로세스/포트)은 **osquery SQL**(read-only, 가장 안전)을 우선 사용하고,
+osquery 가 없거나(attacker/취약웹) 안 되는 것(grep·해시·로그·nft 등)은 docker.sock 로
+고정 argv 만 exec 한다. 응답 `raw.engine` 에 `osquery|exec` 표기.
+
+| type | params | passed 조건 | 엔진(우선 → 폴백) |
 |------|--------|-------------|------------------|
-| `file_exists` | `path`, `target/container` | 파일 존재 | `stat -c … -- <path>` |
-| `file_contains` | `path`, `pattern`\|`regex`, `target` | 매치 1건+ | `grep -F\|-E -n -m1 -e <pat> -- <path>` |
-| `file_hash` | `path`, `target`, `sha256?` | 해시 산출(또는 expected 일치) | `sha256sum -- <path>` |
-| `process_running` | `name`\|`pattern`, `target` | 프로세스 존재 | `pgrep -a -f <pat>` |
-| `port_listening` | `port`, `target` | LISTEN 소켓 존재 | `ss -ltn` (파이썬 파싱) |
-| `log_contains` | `log`, `pattern`, `since_sec?`, `container?` | 매치 라인 존재 | `tail -n 4000 <path>` (파이썬 필터) |
+| `file_exists` | `path`, `target/container` | 파일 존재 | osquery `file` → `stat` |
+| `file_contains` | `path`, `pattern`\|`regex`, `target` | 매치 1건+ | exec `grep -F\|-E -n -m1` |
+| `file_hash` | `path`, `target`, `sha256?` | 해시 산출(또는 expected 일치) | exec `sha256sum` |
+| `process_running` | `name`\|`pattern`, `target` | 프로세스 존재 | osquery `processes` → `pgrep -a -f` |
+| `port_listening` | `port`, `target` | LISTEN 소켓 존재 | osquery `listening_ports` → `ss -ltn` |
+| `log_contains` | `log`, `pattern`, `since_sec?`, `container?` | 매치 라인 존재 | exec `tail -n 4000` (파이썬 필터) |
+
+> osquery SQL 은 파라미터를 SQL 리터럴로 안전 삽입(작은따옴표 이스케이프)하며 read-only(SELECT)
+> 라 주입해도 write 불가. `process_running` 은 osqueryi 자기 프로세스를 제외(`name != 'osqueryi'`)해
+> self-match false positive 를 막는다.
 
 `log` 별칭: `suricata`(ips:/var/log/suricata/eve.json), `modsec`(web:/var/log/apache2/modsec_audit.log),
 `apache_error`(web:/var/log/apache2/error.log), `auth`(container 의 /var/log/auth.log).
@@ -254,3 +264,58 @@ tubewar 가 "학생 A 가 학생 B 의 VM 을 공격"하는 cross-infra 듀얼�
 
 **전제(범위 밖):** CC(중앙) → 학생 VM IP 인바운드 도달은 실습망 기준 가능으로 가정한다. 학생 VM 이
 NAT 뒤라 안 닿는 환경은 별도 push 방식이 필요하지만, 본 레포의 책임은 "읽기 전용 표면 제공"까지다.
+
+---
+
+## 10. 미션별 동적 탐지/경보 룰 — 세 경로 (§8)
+
+Wazuh 탐지룰은 manager(siem)에서만, Suricata 룰은 ips 에서 평가된다. "미션에 따른 동적
+탐지/경보"는 셋으로 정리하며 **기본은 1번**이다.
+
+1. **check-spec 온디맨드(권장 · 추가 인프라 0)** — 미션별 탐지 로직은 tubewar 가 컴파일하고
+   Assessor 가 `wazuh_alert`/`fim_change`/`command_ran`/`log_contains` 로 질의해 판정한다.
+   학생 VM 에 룰을 미리 심지 않고도 "이 미션에서 이런 일이 일어났나"를 평가 → decoupling 유지.
+   6v6 는 §7 정적 수집만으로 충족, **별도 작업 없음.**
+2. **학생 작성 룰(blue 미션)** — 학생이 직접 Suricata 룰(`sid≥9000000` 슬롯) 또는 Wazuh
+   local rule 을 작성하는 미션은, 그 룰 파일을 `file_contains` 로 + 실제 발화를 `wazuh_alert`
+   로 채점. **6v6 추가 변경 불필요.**
+3. **(옵션) 플랫폼 룰 무장(기본 OFF)** — §11 provisioner. read-only 원칙을 깨는 유일한 경로라
+   기본 비활성.
+
+## 11. (옵션) 룰 무장 provisioner — `/provision-rule` (기본 OFF)
+
+특정 미션에서 학생 Wazuh 가 특정 행위를 **실시간 탐지**하도록 룰을 미리 무장해야 할 때만 쓰는,
+**Assessor 와 분리된 별도 write 서비스**. read-only 원칙의 유일한 예외라 **기본 비활성**이다.
+
+| 항목 | 값 |
+|------|----|
+| 컨테이너 | `6v6-provisioner` (dmz `10.20.32.56`, profile `provisioner`) |
+| 기동 | **기본 OFF.** `SKIP_PROVISIONER=0 bash 6v6.sh up` 으로만. (외부: `provisioner.6v6.lab`) |
+| 인증 | `X-API-Key` |
+| 안전장치 | named 템플릿 화이트리스트만 · sid 슬롯 `110000–119999` 자동 할당 · 전용 파일 `zz-6v6-provisioned-rules.xml` 하나만 write(다른 룰/디코더 불변) · **반영 전 `wazuh-analysisd -t` 검증 → 실패 시 롤백**(잘못된 룰이 manager 를 못 깨뜨림) |
+
+엔드포인트:
+- `GET /health` → `{templates, active_sids, ...}`
+- `POST /provision-rule {template, params}` → 룰 무장, 할당된 `sid` 반환
+- `POST /revoke-rule {sid}` → 회수(마지막 룰이면 파일 삭제)
+
+템플릿(화이트리스트):
+| template | params | 효과 |
+|----------|--------|------|
+| `alert_command_pattern` | `label`, `pattern`(pcre2), `level?` | cmdlog 명령이 패턴 매칭 시 경보(MY `100260` 위) |
+| `alert_fim_path` | `label`, `path_pattern`(pcre2), `level?` | syscheck FIM 경로 매칭 변경 시 경보 |
+
+예시:
+```bash
+KEY=ccc-api-key-2026
+PROV="curl -s -H Host:provisioner.6v6.lab -H X-API-Key:$KEY -H Content-Type:application/json -X POST http://<VM_IP>"
+# 무장: 'secret_exfil' 명령 탐지(level 12)
+$PROV/provision-rule -d '{"template":"alert_command_pattern","params":{"label":"mission-exfil","pattern":"secret_exfil","level":12}}'
+# → {"provisioned":true,"sid":110000,...}
+# 회수
+$PROV/revoke-rule -d '{"sid":110000}'
+```
+
+> **트레이드오프(문서화):** provisioner 는 manager 내부 룰셋에 결합되고 상태(무장된 sid)를
+> 가지므로 read-only 모델을 벗어난다. 그래서 ① 기본 OFF, ② 템플릿 화이트리스트만, ③ 전용 파일
+> 격리 + 검증·롤백, ④ tubewar 가 미션 시작 시 무장·종료 시 회수하는 운영을 전제로 한다. DoD 필수 아님.
