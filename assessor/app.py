@@ -18,10 +18,12 @@ import docker
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 
+from .activity import WANT_ALL, build_activity
 from .checks import SUPPORTED_TYPES, run_check
 from .checks.base import ExecResult
 from .targets import known_targets
 
+VERSION = "1.1.0"   # v2: /activity 모니터링 피드 + auditd 명령 수집 추가
 API_KEY = os.getenv("API_KEY", "ccc-api-key-2026")
 ALERTS_PATH = Path(os.getenv("ALERTS_PATH", "/data/wazuh/alerts/alerts.json"))
 EXEC_TIMEOUT = int(os.getenv("EXEC_TIMEOUT", "15"))
@@ -156,15 +158,48 @@ _alerts = AlertSource()
 # ─── routes ──────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health() -> JSONResponse:
+    # wazuh_reachable: 로컬 alerts.json 읽기 가능(간단경로) 또는 indexer 도달(풍부경로)
+    wazuh_reachable = ALERTS_PATH.exists()
+    if not wazuh_reachable and USE_INDEXER:
+        wazuh_reachable = _indexer_reachable()
     return JSONResponse({
         "status": "ok",
         "service": "6v6-assessor",
+        "hostname": os.uname().nodename,
+        "version": VERSION,
+        "wazuh_reachable": wazuh_reachable,
         "time": datetime.now(timezone.utc).isoformat(),
+        "surfaces": ["/assess", "/activity"],
         "supported_types": SUPPORTED_TYPES,
         "targets": known_targets(),
         "alerts_source": str(ALERTS_PATH),
         "indexer_enabled": USE_INDEXER,
     })
+
+
+def _indexer_reachable() -> bool:
+    try:
+        import httpx
+        with httpx.Client(verify=False, timeout=2.0) as cli:
+            r = cli.get(f"{INDEXER_URL}", auth=(INDEXER_USER, INDEXER_PASS))
+            return r.status_code < 500
+    except Exception:
+        return False
+
+
+@app.post("/activity", dependencies=[Depends(require_api_key)])
+async def activity(payload: dict[str, Any]) -> JSONResponse:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="body must be a JSON object")
+    want = payload.get("want") or WANT_ALL
+    if isinstance(want, str):
+        want = [want]
+    bad = [w for w in want if w not in WANT_ALL]
+    if bad:
+        raise HTTPException(status_code=400, detail=f"unknown 'want' items: {bad} (valid: {WANT_ALL})")
+    out = build_activity(payload, _executor, _alerts)
+    out["collected_at"] = datetime.now(timezone.utc).isoformat()
+    return JSONResponse(out)
 
 
 @app.post("/assess", dependencies=[Depends(require_api_key)])

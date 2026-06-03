@@ -351,9 +351,12 @@ curl -s -H "Host: assessor.6v6.lab" -H "X-API-Key: $KEY" -H "Content-Type: appli
 
 - 컨테이너 `6v6-assessor` (dmz 10.20.32.55), `http://assessor.6v6.lab/health`.
 - `bash 6v6.sh up` 이 기본 활성, `SKIP_ASSESSOR=1` 로 생략(base 컨테이너 무영향).
+- 두 표면: **`/assess`**(채점 pass/fail) + **`/activity`**(실습 모니터링 피드 — 최근
+  명령/FIM/알림/서비스 상태). 둘 다 read-only·`X-API-Key`.
 - 채점용 정적 수집(cohort-free): FIM(syscheck) + 셸 명령 로깅을 모든 학생 동일하게 켠다 →
-  `fim_change` / `command_ran` 질의 가능. **클라이언트엔 과목/학년/index 로직이 없다.**
-- check type·예시·보안 노트 전체: **[ASSESSOR.md](ASSESSOR.md)**.
+  `fim_change` / `command_ran` / `/activity` 질의 가능. **클라이언트엔 과목/학년/index 로직이 없다.**
+- cross-infra 듀얼(VM↔VM 공격) 도달성 모델은 새 노출 없이 기존 외부 표면 그대로 사용.
+- check type·`/activity` 계약·예시·cross-infra·보안 노트 전체: **[ASSESSOR.md](ASSESSOR.md)**.
 
 ## 명령어
 

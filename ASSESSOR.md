@@ -45,11 +45,17 @@ CC ──(check-spec, X-API-Key)──▶ Assessor ──┬─ 호스트 상태
 
 ---
 
-## 3. API
+## 3. API — 두 표면
+
+CC 는 두 가지 읽기 전용 표면을 당겨간다(둘 다 `X-API-Key`):
+- **`POST /assess`** — 채점용. 선언적 check-spec → pass/fail + 근거.
+- **`POST /activity`** — 실습 모니터링용. 학생의 최근 활동(명령/파일변경/알림/서비스) 스트림.
 
 ### `GET /health` (인증 불필요)
 ```json
 { "status": "ok", "service": "6v6-assessor",
+  "hostname": "assessor", "version": "1.1.0", "wazuh_reachable": true,
+  "surfaces": ["/assess", "/activity"],
   "supported_types": ["command_ran", "..."], "targets": ["attacker","bastion","..."],
   "alerts_source": "/data/wazuh/alerts/alerts.json", "indexer_enabled": false }
 ```
@@ -78,6 +84,31 @@ CC ──(check-spec, X-API-Key)──▶ Assessor ──┬─ 호스트 상태
 - `passed`: `true`/`false` = 검사 수행 결과. `null` + `error` = 수행 불가(미지원/위험/잘못된 파라미터).
 - `evidence`: 근거 문자열(≤2KB).
 - `raw`: 부가 메타(exit_code, container, matches 등).
+
+### `POST /activity` (헤더 `X-API-Key`) — 실습 모니터링 피드
+check-spec 가 채점용 pass/fail 이라면, `/activity` 는 **진도·병목 모니터링용 활동
+스트림**이다. 신호원은 전부 그 VM 의 로컬 Wazuh. **raw 활동만 반환** — 진도/병목 판정·
+Cohort 태깅은 tubewar 가 한다.
+
+요청:
+```json
+{ "since_sec": 300, "limit": 200,
+  "want": ["commands","fim","alerts","services"],
+  "filter": { "container": "attacker", "user": "ccc", "groups": "syscheck" } }
+```
+- `want` 생략 시 4종 전부. `filter` 의 각 키는 선택(있으면 해당 항목만).
+- `since_sec`/`limit` 로 범위 제한(큰 페이로드 방지, limit ≤ 1000).
+
+응답:
+```json
+{ "collected_at": "iso8601",
+  "commands": [ {"ts","container","user","cmd","exit","source"} ],   // source: prompt|auditd
+  "fim":      [ {"ts","container","path","action","who"} ],          // action: added|modified|deleted
+  "alerts":   [ {"ts","rule_id","level","description","agent","groups"} ],
+  "services": { "apache":"up", "suricata":"up", "haproxy":"up", "recent_apache_errors": 0 } }
+```
+- `commands` ← 명령 로그(7절). `alerts` ← Suricata/ModSec/Sysmon 등 보안 알림(명령·FIM 은 별도 카테고리라 제외).
+- 전부 read-only · Wazuh 기반(alerts.json 또는 indexer). **Cohort/과목/학년 개념 없음.**
 
 ---
 
@@ -145,6 +176,13 @@ $ASSESS '{"checks":[
   {"id":"sqli","type":"wazuh_alert","params":{"groups":["web_attack"],"since_sec":3600}},
   {"id":"fw-fim","type":"fim_change","params":{"path":"/etc/nftables.conf","since_sec":3600}},
   {"id":"ran","type":"command_ran","params":{"pattern":"sqlmap","since_sec":3600}}]}'
+
+# 4) 실습 모니터링 — 최근 5분 활동(명령/FIM/알림/서비스)
+ACT="curl -s -H Host:assessor.6v6.lab -H X-API-Key:$KEY -H Content-Type:application/json -X POST http://<VM_IP>/activity -d"
+$ACT '{"since_sec":300,"limit":100,"want":["commands","fim","alerts","services"]}'
+
+# 5) attacker 의 명령만 필터
+$ACT '{"since_sec":600,"want":["commands"],"filter":{"container":"attacker"}}'
 ```
 
 ---
@@ -162,7 +200,18 @@ $ASSESS '{"checks":[
   - `attacker`/`bastion`(Wazuh agent 없음): 기존 `rsyslog *.* @siem:514` 로 manager 전달.
   - `web`/`fw`/`ips`(Wazuh agent 보유): `/var/log/6v6-cmd.log` localfile 로 manager 전달.
   - manager 의 `cmdlog` decoder/rules(`siem/cmdlog-*.xml`, cont-init `94-cmdlog-rules`)가
-    `data.command` 등으로 파싱 → `alerts.json` 기록 → `command_ran` 질의 가능.
+    `data.command` 등으로 파싱 → `alerts.json` 기록 → `command_ran`·`/activity` 질의 가능.
+
+> **auditd execve 레이어(검토 후 미채택) — 정직한 기록.**
+> 설계상 명령 수집을 "PROMPT(셸 빌트인 포함) + auditd execve(위변조 강함)" 두 겹으로
+> 두려 했으나, **Linux audit netlink 는 네임스페이스화되어 있지 않아** 비특권 컨테이너에서
+> 접근이 막힌다. `--cap-add AUDIT_CONTROL --cap-add AUDIT_WRITE` 를 줘도 `auditctl` 이
+> `Operation not permitted` 로 룰 로드에 실패함을 실측 확인했다. 동작시키려면 fw/ips/web/
+> attacker/bastion 을 `--privileged` 로 올려야 하는데, 이는 **보안 실습 인프라에 위험 표면을
+> 신설하지 않는다**는 불변식에 정면으로 위배된다. 따라서 auditd 는 채택하지 않고 PROMPT 경로를
+> 명령 수집의 단일·검증된 경로로 쓴다. 다만 `/activity` 의 `commands` 핸들러는 auditd 알림
+> 형태(`data.audit.command`)도 그대로 파싱하도록 두어, 향후 audit 가능 호스트에선 자동 병합된다
+> (`source: prompt|auditd`).
 
 > **bastion 무변경 보장:** 위 셸 profile.d 드롭인은 Bastion 의 두뇌(KG/Manager/SubAgent)·
 > API(`/health`·`/exec`·`/chat`)·ProxyJump 와 완전히 무관하다. 명령 합성 surface(`/exec`
@@ -178,3 +227,30 @@ $ASSESS '{"checks":[
 - 모든 외부 접근은 **읽기 전용 + API 키**. 쓰기/변경/공격 명령 type 은 존재하지 않는다.
 - 보안 핵심 로직은 `assessor/tests/test_checks.py` 로 단위 검증(주입 차단·미지원 거부·필터):
   `python3 -m unittest assessor.tests.test_checks -v` (repo 루트).
+
+---
+
+## 9. cross-infra 듀얼 — VM ↔ VM 도달성 (6v6 측 점검)
+
+tubewar 가 "학생 A 가 학생 B 의 VM 을 공격"하는 cross-infra 듀얼을 운영한다. 6v6 측 결론:
+
+**기존 외부 노출 모델을 그대로 사용한다 — 새 노출 포트를 신설하지 않는다.** 한 VM 의 외부
+표면이 곧 VM↔VM 공격 표면이다:
+
+| 외부 노출(VM_IP) | 컨테이너 | cross-infra 용도 |
+|------------------|----------|------------------|
+| `80`, `443` | fw HAProxy | 상대 취약웹/랜딩 공격(Host 헤더로 vhost 라우팅) |
+| `9100` | fw → bastion API | 상대 Bastion API |
+| `2204` | bastion SSH | 상대 점프 호스트 |
+| `2202` | attacker SSH | 상대 attacker 직접 |
+
+방어선이 **VM 간에도 동일하게** 성립함을 점검·확인:
+- A 의 `attacker` → B 의 `VM_IP:80`(`Host: juice.6v6.lab` 등) → **B 의 fw → ips(Suricata) →
+  web(ModSecurity) 강제 경유** 후에야 취약웹 도달. 즉 cross-VM 공격도 B 의 IPS/WAF 검사를 받는다.
+- B 의 `int`(취약웹 7종, 10.20.40.0/24)은 **직접 노출 없음** — B 의 web vhost reverse proxy 로만
+  도달(호스트에서 `docker port 6v6-juiceshop` 없음으로 확인). 따라서 A 는 B 의 내부망에 직접 못 들어간다.
+- Assessor(10.20.32.55)는 dmz 내부 서비스로 **별도 published 포트가 없다.** CC 는 `VM_IP:80` 에
+  `Host: assessor.6v6.lab` + `X-API-Key` 로만 접근(공격자에겐 의미 없는 읽기 전용 API).
+
+**전제(범위 밖):** CC(중앙) → 학생 VM IP 인바운드 도달은 실습망 기준 가능으로 가정한다. 학생 VM 이
+NAT 뒤라 안 닿는 환경은 별도 push 방식이 필요하지만, 본 레포의 책임은 "읽기 전용 표면 제공"까지다.

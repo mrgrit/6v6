@@ -762,11 +762,26 @@ cmd_smoke() {
             -X POST "http://$IP/assess" \
             -d '{"checks":[{"id":"smoke1","type":"file_exists","target":"web","params":{"path":"/etc/apache2/apache2.conf"}}]}' 2>/dev/null)
         if echo "$sample" | grep -q '"passed": *true'; then
-            printf "  [OK]   sample check file_exists(web) → passed (부작용 0)\n"
+            printf "  [OK]   sample /assess file_exists(web) → passed (부작용 0)\n"
         elif echo "$sample" | grep -q '"results"'; then
-            printf "  [WARN] sample check 응답하나 passed 아님: %s\n" "$(echo "$sample" | head -c 160)"
+            printf "  [WARN] sample /assess 응답하나 passed 아님: %s\n" "$(echo "$sample" | head -c 160)"
         else
-            printf "  [WARN] sample check 무응답 (assessor 부팅중 또는 API key 불일치)\n"
+            printf "  [WARN] sample /assess 무응답 (assessor 부팅중 또는 API key 불일치)\n"
+        fi
+        # 샘플 /activity 1건: 최근 24h 보안 알림 리스트 반환 (모니터링 피드)
+        local act
+        act=$(curl -s -m 8 -H "Host: assessor.6v6.lab" \
+            -H "X-API-Key: ${API_KEY:-ccc-api-key-2026}" \
+            -H "Content-Type: application/json" \
+            -X POST "http://$IP/activity" \
+            -d '{"since_sec":86400,"limit":50,"want":["alerts","commands","services"]}' 2>/dev/null)
+        if echo "$act" | grep -q '"collected_at"'; then
+            local n_al n_cmd
+            n_al=$(echo "$act" | grep -o '"rule_id"' | wc -l | tr -dc 0-9)
+            n_cmd=$(echo "$act" | grep -o '"cmd"' | wc -l | tr -dc 0-9)
+            printf "  [OK]   sample /activity → alerts=%s commands=%s + services 요약 반환\n" "${n_al:-0}" "${n_cmd:-0}"
+        else
+            printf "  [WARN] sample /activity 무응답: %s\n" "$(echo "$act" | head -c 160)"
         fi
     else
         echo "  [SKIP] 6v6-assessor not running (SKIP_ASSESSOR=1?)"
