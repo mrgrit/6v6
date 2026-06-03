@@ -254,6 +254,11 @@ tubewar 가 "학생 A 가 학생 B 의 VM 을 공격"하는 cross-infra 듀얼�
 | `2204` | bastion SSH | 상대 점프 호스트 |
 | `2202` | attacker SSH | 상대 attacker 직접 |
 
+**공격자 두 종류(2026-06):** `attacker`(ext, **insider** — 내부 발판)와 `attacker-ext`(wan,
+**outsider** — 내부 브리지 차단, 공개 포트로만). outsider 는 solo 에서도 duel 과 동일한 외부
+진입 경로(`<VM_IP>` 공개 포트)를 갖는다. Assessor targets 에 `attacker`/`attacker-ext`(별칭
+`insider`/`outsider`) 둘 다 등록 — CC 가 양쪽을 `/assess`·`/activity` 로 질의 가능.
+
 방어선이 **VM 간에도 동일하게** 성립함을 점검·확인:
 - A 의 `attacker` → B 의 `VM_IP:80`(`Host: juice.6v6.lab` 등) → **B 의 fw → ips(Suricata) →
   web(ModSecurity) 강제 경유** 후에야 취약웹 도달. 즉 cross-VM 공격도 B 의 IPS/WAF 검사를 받는다.

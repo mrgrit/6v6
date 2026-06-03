@@ -357,6 +357,11 @@ cmd_up() {
         PROFILES="--profile assessor"
         echo "[6v6] Assessor 평가 수집 레이어 활성 (set SKIP_ASSESSOR=1 to disable)"
     fi
+    # 외부망 공격자 attacker-ext — 기본 ON. 격리 wan망, 공개 포트로만 VM 접근(outsider).
+    if [ "${SKIP_ATTACKER_EXT:-0}" = "0" ]; then
+        PROFILES="$PROFILES --profile attacker-ext"
+        echo "[6v6] 외부망 공격자 attacker-ext 활성 (wan, 공개 포트로만 접근; SKIP_ATTACKER_EXT=1 로 비활성)"
+    fi
     # (옵션) 룰 무장 provisioner — write 표면이라 기본 OFF. SKIP_PROVISIONER=0 으로만 활성.
     if [ "${SKIP_PROVISIONER:-1}" = "0" ]; then
         PROFILES="$PROFILES --profile provisioner"
@@ -602,7 +607,7 @@ cmd_status() {
     echo " 6v6 Lab Environment — VM IP: $IP"
     echo "================================================================"
     echo
-    docker compose --profile assessor --profile provisioner ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+    docker compose --profile assessor --profile provisioner --profile attacker-ext ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
     # Windows 엔드포인트 (옵션) — base compose 와 분리돼 있어 별도로 보여줌
     if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
         docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' --filter name=^6v6-win$ | tail -n +2
@@ -631,7 +636,8 @@ cmd_status() {
     echo
     echo "--- SSH (ProxyJump) --------------------------------------------"
     echo "  ssh -p 2204 ccc@$IP            # bastion (jump host)"
-    echo "  ssh -p 2202 ccc@$IP            # attacker (direct)"
+    echo "  ssh -p 2202 ccc@$IP            # attacker (ext, insider — 내부 발판)"
+    echo "  ssh -p 2203 ccc@$IP            # attacker-ext (wan, outsider — 공개 포트로만; SKIP_ATTACKER_EXT=1 로 비활성)"
     echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.1     # secu"
     echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.80    # web"
     echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.100   # siem"

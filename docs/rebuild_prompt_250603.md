@@ -65,41 +65,50 @@ Windows 포함 시 `/dev/kvm` 필요 (BIOS VT-x/AMD-V + `kvm_intel`/`kvm_amd` �
 
 ## 2. 네트워크 설계 (가장 중요 — 정확히 재현)
 
-### 2.1 Docker 네트워크 (5개, 모두 bridge)
+### 2.1 Docker 네트워크 (6개, 모두 bridge)
 
 | 이름 | subnet | gateway | 용도 |
 |------|--------|---------|------|
 | `6v6-ext`  | 10.20.30.0/24 | 10.20.30.254 | attacker/bastion/fw(ext측) |
 | `6v6-pipe` | 10.20.31.0/24 | 10.20.31.254 | fw↔ips 전용 구간 |
-| `6v6-dmz`  | 10.20.32.0/24 | 10.20.32.254 | web/siem/indexer/dashboard/portal/ips(dmz측) |
+| `6v6-dmz`  | 10.20.32.0/24 | 10.20.32.254 | web/siem/indexer/dashboard/portal/**assessor(.55)**/**provisioner(.56)**/ips(dmz측) |
 | `6v6-int`  | 10.20.40.0/24 | 10.20.40.254 | 7 vuln 사이트 (외부 노출 X) |
 | `6v6-user` | 10.20.33.0/24 | 10.20.33.254 | Windows 등 사용자 PC, ips(user측 .1) 가 GW |
+| `6v6-wan`  | 10.20.20.0/24 | 10.20.20.254 | **(2026-06 추가)** attacker-ext('진짜 외부' 공격자, outsider). 내부 브리지와 격리 — NAT 로 호스트 LAN/공개 포트만 접근 |
 
 compose 의 `networks:` 에서 `name:` 을 위 이름으로 고정하고 `ipam.config.subnet/gateway` 명시.
+> `6v6-wan` 은 `cmd_setup_forward` 의 inter-bridge 허용 목록(ext/pipe/dmz/int)에 **들어가지 않는다** → docker isolation 으로 내부 브리지와 차단. attacker-ext 는 fw/dmz/int 에 직접 못 닿고 VM 공개 포트로만 진입(외부 침입자 모델, §8.1).
 
 ### 2.2 고정 IP 할당표 (절대 변경 금지)
 
-| 컨테이너 | ext | pipe | dmz | int | user |
-|----------|-----|------|-----|-----|------|
-| bastion | .201 | | | | |
-| attacker | .202 | | | | |
-| fw | .1 | .1 | | | |
-| ips | | .2 | .1 | | .1 |
-| web | | | .80 | .80 | |
-| siem (wazuh.manager) | | | .100 | | |
-| wazuh-indexer | | | .110 | | |
-| wazuh-dashboard | | | .120 | | |
-| portal | | | .50 | | |
-| juiceshop | | | | .81 | |
-| dvwa | | | | .82 | |
-| neobank | | | | .83 | |
-| govportal | | | | .84 | |
-| mediforum | | | | .85 | |
-| adminconsole | | | | .86 | |
-| aicompanion | | | | .87 | |
-| (옵션) win | | | | | .60 |
-| (옵션) ollama | .220 | | | | |
-| (옵션) sysmon-host | .210 | | | | |
+| 컨테이너 | ext | pipe | dmz | int | user | wan |
+|----------|-----|------|-----|-----|------|-----|
+| bastion | .201 | | | | | |
+| attacker (insider) | .202 | | | | | |
+| fw | .1 | .1 | | | | |
+| ips | | .2 | .1 | | .1 | |
+| web | | | .80 | .80 | | |
+| siem (wazuh.manager) | | | .100 | | | |
+| wazuh-indexer | | | .110 | | | |
+| wazuh-dashboard | | | .120 | | | |
+| portal | | | .50 | | | |
+| **assessor** (2026-06) | | | .55 | | | |
+| **provisioner** (옵션, 기본 OFF) | | | .56 | | | |
+| **attacker-ext** (outsider, 2026-06) | | | | | | .202 |
+| juiceshop | | | | .81 | | |
+| dvwa | | | | .82 | | |
+| neobank | | | | .83 | | |
+| govportal | | | | .84 | | |
+| mediforum | | | | .85 | | |
+| adminconsole | | | | .86 | | |
+| aicompanion | | | | .87 | | |
+| (옵션) win | | | | | .60 | |
+| (옵션) ollama | .220 | | | | | |
+| (옵션) sysmon-host | .210 | | | | | |
+
+> **assessor(.55)**: 읽기 전용 평가/모니터링 표면(`/assess`+`/activity`, X-API-Key). dmz alias `assessor`. 자세한 계약·type 은 **`ASSESSOR.md`**.
+> **provisioner(.56)**: (옵션, 기본 OFF) 미션 룰 무장 write 서비스. profile `provisioner`, `SKIP_PROVISIONER=0` 으로만 기동.
+> **attacker-ext(.202/wan)**: '진짜 외부' 공격자. 기존 attacker(ext)=내부 발판 insider 와 대비. profile `attacker-ext`(기본 ON, `SKIP_ATTACKER_EXT=1` 비활성).
 
 fw 의 ext IP `.1` 에는 network alias `secu`, `6v6-secu` 부여(legacy 4-VM 시대 호환). pipe IP `.1` 에도 동일 alias.
 각 wazuh 서비스는 dmz alias 부여: indexer→`wazuh.indexer,wazuh-indexer`, siem→`siem,wazuh.manager,wazuh-manager`, dashboard→`wazuh.dashboard,wazuh-dashboard`.
@@ -111,6 +120,7 @@ Docker 기본 bridge 는 서로 다른 브리지 간 forward 를 막는다. 4-ti
 1. **default route 강제**: 각 컨테이너 entrypoint 가 `DEFAULT_GW` 환경변수로 자기 default route 를 hop 으로 박는다.
    - bastion/attacker `DEFAULT_GW=10.20.30.1` (fw)
    - web `DEFAULT_GW=10.20.32.1` (ips)
+   - **attacker-ext `DEFAULT_GW=""`** (빈값) → entrypoint 가 라우트 override 를 **건너뛰고** docker 기본 GW(wan .254) 유지. 그래서 내부 브리지로 못 가고 NAT 로 호스트 LAN(공개 포트)만 접근 = 외부 침입자. (attacker entrypoint 의 `${DEFAULT_GW-...}` 는 `:-` 가 아니라 `-` 라 빈값을 보존.)
    - fw 는 dmz/int(10.20.32.0/24, 10.20.40.0/24) 로 가는 route 를 ips(10.20.31.2) 경유로 추가.
    - ips 는 ext(10.20.30.0/24) 복귀 route 를 fw(10.20.31.1) 경유로 추가.
 2. **ip_forward**: fw, ips 에 `sysctls: net.ipv4.ip_forward=1` + `cap_add: NET_ADMIN, NET_RAW`.
@@ -126,12 +136,17 @@ Docker 기본 bridge 는 서로 다른 브리지 간 forward 를 막는다. 4-ti
 | 80  (`PORT_HTTP`) | HTTP — 모든 vhost | fw:80 |
 | 443 (`PORT_HTTPS`) | HTTPS self-signed | fw:443 |
 | 2204 (`PORT_BASTION_SSH`) | bastion SSH 점프 | bastion:22 |
-| 2202 (`PORT_ATTACKER_SSH`) | attacker SSH 직접 | attacker:22 |
+| 2202 (`PORT_ATTACKER_SSH`) | attacker SSH 직접 (insider) | attacker:22 |
+| 2203 (`PORT_ATTACKER_EXT_SSH`) | **attacker-ext SSH (outsider, 2026-06)** | attacker-ext:22 |
 | 9100 (`PORT_BASTION_API`) | Bastion API | fw:9100→bastion |
 | 8000 (`PORT_PORTAL`) | 관리 포털(직접) | — (vhost portal.6v6.lab 권장) |
 | 5601 (`PORT_SIEM_DASH`) | SIEM lite UI(직접) | — |
 
+vhost(Host 헤더, fw HAProxy 라우팅): 기존 `{juice,dvwa,neobank,govportal,mediforum,admin,ai,portal,siem,bastion}.6v6.lab` 에 더해 **`assessor.6v6.lab`(→10.20.32.55)**, **`provisioner.6v6.lab`(→10.20.32.56, 옵션)** 추가.
+
 > 운영자(개발) VM 의 실제 `.env` 는 충돌 회피용으로 `18080/18443/2284/2282/19100` 등을 쓰지만, **배포 기본값은 `.env.example` 의 80/443/2204/2202/9100**.
+
+> **★ int(취약웹) 도달 메커니즘 — 포트포워딩 아님.** 외부에 열린 건 fw 의 `80/443`(+SSH/API)뿐이고, 그게 유일한 docker DNAT(포트포워딩)다. dvwa/juice 같은 **int 사이트는 절대 직접 포워딩하지 않는다** — `fw HAProxy(Host 헤더 분기) → ips(Suricata 인라인 검사) → web Apache(vhost + ModSecurity, mod_proxy) → int 백엔드` 의 **2겹 L7 리버스 프록시**로만 도달한다(web 이 dmz+int 양다리). 즉 모든 외부 요청이 IPS/WAF 검사를 강제로 거친다. attacker(insider)·attacker-ext(outsider) 둘 다 이 체인을 통과한다.
 
 ---
 
@@ -318,8 +333,15 @@ agent 패러다임 = 자체 binary 디코딩, syslog 패러다임 = raw forward 
 
 ## 8. bastion / attacker / portal 상세
 
-### 8.1 attacker
-ubuntu:22.04 + pentest 도구: `nmap, hydra, sqlmap, nikto`, nuclei(설치), netcat, curl, python3, dnsutils. rsyslog → siem 514/udp. motd 배너. `extra_hosts` 로 `*.6v6.lab→10.20.30.1`. ccc/ccc.
+### 8.1 attacker (insider) + attacker-ext (outsider, 2026-06)
+**attacker** (ext .202): ubuntu:22.04 + pentest 도구 `nmap, hydra, sqlmap, nikto, ffuf`, nuclei, msfconsole, netcat, curl, python3, dnsutils. rsyslog → siem 514/udp. motd 배너. `extra_hosts` 로 `*.6v6.lab→10.20.30.1`(fw). `DEFAULT_GW=10.20.30.1`. ccc/ccc. → **내부 발판 있는 침입자(insider)**: ext 브리지에서 fw 내부 IP·bastion 직접 접근 가능, 내부 이름(`dvwa.6v6.lab→10.20.30.1`)으로 공격.
+
+**attacker-ext** (wan .202, **동일 이미지/entrypoint 재사용**): profile `attacker-ext`(기본 ON, `SKIP_ATTACKER_EXT=1` 비활성). 차이점:
+- `DEFAULT_GW=""` → 라우트 override 안 함, docker 기본 GW(wan .254) 유지. **`extra_hosts` 없음**(외부엔 내부 DNS 없음).
+- wan 은 inter-bridge 허용 목록 밖 → **ext/dmz/int 직접 차단**. NAT 로 호스트 LAN 만: 자기 VM 공개 포트(`<VM_IP>:80/443/2204/2202/9100`) + 상대 VM 공개 포트로만 접근.
+- → **'진짜 외부' 침입자(outsider)**: 공개 표면만 보고 `curl -H "Host: dvwa.6v6.lab" http://<VM_IP>/` 처럼 공격. solo 도 duel(상대 VM 공격)과 **동일한 외부 진입 경로**가 됨.
+- 동기: solo 에서 insider 가 내부 이름으로 치면 "VM 안에서 출발"이라 외부 공격답지 않음. outsider 를 둬서 insider/outsider 두 위협을 모두 실습. SSH 직접 `ssh -p 2203 ccc@<VM_IP>`.
+- 한계(단일 VM): 컨테이너라 호스트 동거는 불가피 — 완전한 '외부 머신'은 duel 상대 VM. attacker-ext 는 단일 VM 안 최선 근사(내부 발판 0).
 
 ### 8.2 bastion (컨테이너 셸)
 - Dockerfile(ubuntu:22.04): openssh-server, sudo, rsyslog, python3-pip, docker-ce-cli, osquery, geoip-bin, whois, auditd, jq, vim, tmux. pip: fastapi, uvicorn[standard], httpx, pydantic, pyyaml, pandas, numpy, scikit-learn. COPY `bastion/api.py`→`/opt/bastion-api/api.py`(stub), `bastion/src`→`/opt/ccc-src/`.
@@ -484,8 +506,35 @@ sudo tail -20 /var/ossec/logs/alerts/alerts.json | jq '.rule.description, .agent
 | LLM 모델 | Manager `gpt-oss:120b`, SubAgent `gemma3:4b` |
 | 도메인 | `*.6v6.lab` (self-signed `CN=*.6v6.lab,O=6v6,C=KR` 730일) |
 
-**불변식(반드시 지킬 것)**: ① 패킷은 fw→ips→web 강제 경유 ② int 7 사이트는 외부 비노출(web vhost 만 도달) ③ Wazuh 2 패러다임(agent: ips/web/win, syslog: bastion/attacker) ④ 학생마다 SSH 키/MISP/OpenCTI 자격 자동 생성(gitignore) ⑤ siem 컨테이너 api.yaml bind mount 금지 ⑥ overlay 는 SKIP_* 로 토글, base 15 컨테이너는 항상 단독 동작.
+**불변식(반드시 지킬 것)**: ① 패킷은 fw→ips→web 강제 경유 ② int 7 사이트는 외부 비노출(web vhost 만 도달) ③ Wazuh 2 패러다임(agent: ips/web/win, syslog: bastion/attacker) ④ 학생마다 SSH 키/MISP/OpenCTI 자격 자동 생성(gitignore) ⑤ siem 컨테이너 api.yaml bind mount 금지 ⑥ overlay 는 SKIP_* 로 토글, base 15 컨테이너는 항상 단독 동작 ⑦ **Bastion·토폴로지·취약웹·Wazuh 코어 무변경**(Assessor 레이어는 별개 서비스로만 얹음).
 
 ---
 
-*이 문서는 2026-06-03 기준 실행 중인 인프라(컨테이너 18종 + 인프라 직접 검증)와 저장소 전체 소스를 정밀 분석해 작성됨. 누락 없이 이 사양대로 구현하면 6v6 전체가 재현된다.*
+## 15. 평가/모니터링 레이어 + 외부 공격자 (2026-06 추가 · 다른 에이전트 참고)
+
+> 중앙 플랫폼 **tubewar/CC** 가 학생 VM 을 읽기 전용으로 pull(채점·모니터링)하고 cross-infra 듀얼(VM↔VM)을 운영한다. 6v6 측에 추가된 표면·컨테이너 요약. **상세·계약·예시는 저장소 `ASSESSOR.md` 가 정본.**
+
+### 15.1 Assessor (읽기 전용 표면, 기본 ON)
+- 컨테이너 `6v6-assessor`(dmz **10.20.32.55**, profile `assessor`, `SKIP_ASSESSOR=1` 비활성), `python:3.12-slim`+FastAPI. read-only 마운트: docker.sock·wazuh-manager-logs·ips-suricata-logs·web-apache-logs. 인증 `X-API-Key`(`API_KEY`, 기본 `ccc-api-key-2026`). 외부: `assessor.6v6.lab`.
+- 두 표면(둘 다 raw 만 반환, **Cohort/과목/학년 태깅은 tubewar 책임 — 6v6 엔 없음**):
+  - **`POST /assess`** 채점: check type `file_exists/file_contains/file_hash/process_running/port_listening/log_contains/wazuh_alert/fim_change/command_ran`. 호스트 단언은 **osquery 우선 + docker.sock exec 폴백**, 보안신호는 Wazuh `alerts.json`(+옵션 indexer). 고정 템플릿+화이트리스트로만 합성(주입 면역, 부작용 0).
+  - **`POST /activity`** 모니터링: `commands/fim/alerts/services` 활동 스트림(since_sec/limit/want/filter).
+- `GET /health`(무인증): `{status,hostname,version,wazuh_reachable,surfaces,supported_types,targets}`.
+
+### 15.2 정적 Wazuh 수집 보강 (cohort-free, 모든 학생 동일)
+- **FIM(syscheck, realtime+report_changes+whodata)**: web(apache/modsec confs), fw(/etc/nftables.conf,/etc/haproxy), ips(/etc/suricata), 각 /home/ccc. (`web/wazuh-agent.conf.append` + fw/ips entrypoint 가 `6v6-assessor-collection` 블록을 ossec.conf 에 멱등 주입.)
+- **명령 로깅**: 전 컨테이너 `/etc/profile.d/6v6-cmdlog.sh` 의 PROMPT_COMMAND → `CMD6V6 ...` 라인. attacker/bastion=rsyslog→siem:514, web/fw/ips=`/var/log/6v6-cmd.log` localfile. manager `cmdlog` decoder/rules(`siem/cmdlog-*.xml`, cont-init `94-cmdlog-rules`) → alerts.json. **OS_Regex 주의: decoder 의 `\.`=임의문자(PCRE 와 반대), program_name parent+필드 child 구조.**
+  - auditd execve(2번째 명령원)는 **비특권 컨테이너에서 audit netlink 불가**(CAP 줘도 Operation not permitted)라 미채택 — PROMPT 가 단일 경로(`/activity` commands 는 auditd 형태도 forward-compat 파싱).
+
+### 15.3 (옵션) 룰 무장 provisioner (write, 기본 OFF)
+- 컨테이너 `6v6-provisioner`(dmz **10.20.32.56**, profile `provisioner`, **`SKIP_PROVISIONER=1` 기본**). read-only 원칙의 유일 예외. `provisioner.6v6.lab`.
+- `POST /provision-rule {template,params}` / `POST /revoke-rule {sid}`. named 템플릿 화이트리스트(`alert_command_pattern`/`alert_fim_path`)만, sid **110000–119999**, manager 전용 파일 `zz-6v6-provisioned-rules.xml`(마지막 로드, if_sid 해소) 하나만 write. **반영 전 `wazuh-analysisd -t` 검증→실패 시 롤백**(나쁜 룰이 manager 못 깨뜨림). tubewar 가 미션 시작 무장·종료 회수.
+- 미션별 동적 탐지 3경로: ① check-spec 온디맨드(권장,추가 0) ② 학생 작성 룰(file_contains+wazuh_alert) ③ 이 provisioner(옵션). 기본은 ①.
+
+### 15.4 cross-infra 듀얼 (VM↔VM) — insider/outsider
+- 외부 표면(=VM↔VM 공격 표면)은 새 노출 없이 기존대로: fw `80/443/9100` + SSH `2204/2202/2203`. int(취약웹)은 비노출, web vhost 리버스 프록시(§2.4 ★)로만 도달 → cross-VM 공격도 상대 IPS/WAF 검사 강제.
+- **attacker(ext)=insider**(내부 발판), **attacker-ext(wan)=outsider**(공개 포트로만). duel 상대 VM = 완전한 외부. tubewar 는 A 의 attacker(-ext)가 B 의 `<B_IP>:80`(Host 헤더)·`:2204` 등을 치게 한다.
+
+---
+
+*이 문서는 2026-06-03 기준 실행 중인 인프라(컨테이너 18종 + 인프라 직접 검증)와 저장소 전체 소스를 정밀 분석해 작성됨. 누락 없이 이 사양대로 구현하면 6v6 전체가 재현된다. 2026-06 추가분(Assessor/provisioner/attacker-ext)은 §15 + `ASSESSOR.md` 참조.*

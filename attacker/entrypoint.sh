@@ -4,12 +4,19 @@ set -e
 SSH_USER="${SSH_USER:-ccc}"
 SSH_PASS="${SSH_PASS:-ccc}"
 SIEM_HOST="${SIEM_HOST:-10.20.32.100}"
-DEFAULT_GW="${DEFAULT_GW:-10.20.30.1}"
+# ★ ':-' 가 아니라 '-' : 미설정이면 fw, 빈 문자열을 명시(attacker-ext, 외부망)하면 그대로 빈값.
+DEFAULT_GW="${DEFAULT_GW-10.20.30.1}"
 
-# Default route via fw (so packets to dmz/int go through chain)
-echo "[attacker] setting default route via $DEFAULT_GW (fw)"
-ip route del default 2>/dev/null || true
-ip route add default via "$DEFAULT_GW" 2>/dev/null || true
+# Default route via fw (so packets to dmz/int go through chain).
+# DEFAULT_GW 가 빈값이면(외부망 attacker-ext) docker 기본 GW 유지 — 내부 브리지(ext/dmz/int)에
+# 직접 못 닿고 VM 공개 포트로만 접근하는 '진짜 외부 침입자' 모델.
+if [ -n "$DEFAULT_GW" ]; then
+    echo "[attacker] setting default route via $DEFAULT_GW (fw)"
+    ip route del default 2>/dev/null || true
+    ip route add default via "$DEFAULT_GW" 2>/dev/null || true
+else
+    echo "[attacker] DEFAULT_GW 빈값 — docker 기본 라우트 유지(외부망 모델: 공개 포트로만 VM 접근)"
+fi
 
 if ! id "$SSH_USER" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -G sudo "$SSH_USER"

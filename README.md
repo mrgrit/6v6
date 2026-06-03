@@ -104,7 +104,8 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 | 80 | HTTP — 7 vhost (랜딩 + 7 취약 웹) |
 | 443 | HTTPS (self-signed) |
 | 2204 | bastion SSH (점프 호스트) |
-| 2202 | attacker SSH (직접 진입) |
+| 2202 | attacker SSH (insider — 내부 발판) |
+| 2203 | attacker-ext SSH (outsider — 공개 포트로만, 2026-06) |
 | 8000 | 관리 포털 |
 | 5601 | SIEM lite UI (Wazuh 알림 viewer) |
 | 9100 | Bastion API |
@@ -114,7 +115,8 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 | 컨테이너 | Zone / IP | 역할 |
 |----------|-----------|------|
 | 6v6-bastion | ext 10.20.30.201 | SSH 점프 + Bastion API + rsyslog forward |
-| 6v6-attacker | ext 10.20.30.202 | nmap, hydra, sqlmap, nikto, nuclei + rsyslog forward |
+| 6v6-attacker | ext 10.20.30.202 | 공격자(**insider** — 내부 발판) nmap/hydra/sqlmap/nikto/ffuf/nuclei + rsyslog |
+| 6v6-attacker-ext | wan 10.20.20.202 | 공격자(**outsider** — 공개 포트로만, 2026-06) `SKIP_ATTACKER_EXT=1` 로 비활성 |
 | **6v6-fw** | ext .1 ↔ pipe .1 | **방화벽** — nftables L3 forward + DNAT + HAProxy |
 | **6v6-ips** | pipe .2 ↔ dmz .1 | **IPS** — Suricata 인라인 sniff + **Wazuh agent** |
 | 6v6-web | dmz .80 ↔ int .80 | Apache + ModSecurity + 7 vhost + **Wazuh agent** |
@@ -133,6 +135,15 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 
 > int(10.20.40.0/24) 의 7 vuln 사이트는 **외부 노출 X** — `web` 의 Apache vhost reverse
 > proxy 로만 도달. attacker → fw → ips → web → vuln 의 강제 경유.
+>
+> **int 도달 메커니즘(포트포워딩 아님):** 외부에 열린 docker DNAT(포트포워딩)는 fw 의 `80/443`
+> (+SSH/API)뿐. int 사이트는 **절대 직접 포워딩하지 않고**, `fw HAProxy(Host 헤더 분기) →
+> ips(Suricata) → web Apache(vhost+ModSecurity, mod_proxy) → int 백엔드` 의 **2겹 L7 리버스
+> 프록시**로만 열린다(web 이 dmz+int 양다리). 그래서 모든 외부 요청이 IPS/WAF 검사를 강제로 거친다.
+>
+> **공격자 두 종류:** `6v6-attacker`(ext)=**insider**(내부 발판, 내부 이름으로 공격),
+> `6v6-attacker-ext`(wan)=**outsider**(내부 브리지 차단, `<VM_IP>` 공개 포트로만 — solo 도 duel 과
+> 동일한 외부 경로). 둘 다 위 리버스 프록시 체인을 거쳐 탐지된다.
 
 ### 옵션 — Windows 엔드포인트 (16번째 컨테이너)
 

@@ -86,6 +86,35 @@ services:
       - ./keys:/keys:ro
     restart: unless-stopped
 
+  # ╭─ wan tier: '진짜 외부' 공격자 (격리망, 공개 포트로만 VM 접근) ──╮
+  # 기존 attacker(ext) = 내부 발판 있는 침입자(insider). 이건 ext/dmz/int 에 직접 못 닿고
+  # VM 의 공개 포트(80/443/2204/2202/9100)로만 접근하는 outsider 모델 — solo 도 duel 과
+  # 동일한 외부 진입 경로가 된다. profile `attacker-ext`(기본 ON, SKIP_ATTACKER_EXT=1 로 비활성).
+  attacker-ext:
+    container_name: 6v6-attacker-ext
+    profiles: [attacker-ext]
+    build:
+      context: .
+      dockerfile: attacker/Dockerfile
+    hostname: attacker-ext
+    networks:
+      wan:
+        ipv4_address: 10.20.20.202
+    ports:
+      - "${PORT_ATTACKER_EXT_SSH:-2203}:22"
+    cap_add: [NET_ADMIN]
+    environment:
+      SSH_USER: ${SSH_USER:-ccc}
+      SSH_PASS: ${SSH_PASS:-ccc}
+      # ★ 빈값 — fw 로 라우트 override 안 함. docker 기본 GW 유지 → 내부 브리지 직접 차단,
+      #   NAT 로 호스트 LAN(자기/상대 VM 공개 포트)만 접근. extra_hosts 도 없음(외부엔 내부 DNS 없음).
+      DEFAULT_GW: ""
+      SIEM_HOST: 10.20.32.100   # 외부라 도달 못함 — rsyslog forward 는 graceful fail
+    volumes:
+      - attacker-ext-home:/home/ccc
+      - ./keys:/keys:ro
+    restart: unless-stopped
+
   # ╭─ Edge router: ext <-> pipe ────────────────────────────╮
   fw:
     container_name: 6v6-fw
@@ -462,6 +491,17 @@ networks:
         - subnet: 10.20.33.0/24
           gateway: 10.20.33.254
 
+  # wan zone — '진짜 외부' 공격자(attacker-ext)가 사는 격리망. setup_forward 의 inter-bridge
+  # 허용 목록(ext/pipe/dmz/int)에 들어가지 않으므로 docker isolation 으로 내부 브리지와 차단되고,
+  # NAT 로 호스트 LAN(공개 포트)만 접근 가능 — 외부 침입자/인터넷 vantage 를 단일 VM 안에서 모사.
+  wan:
+    name: 6v6-wan
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.20.0/24
+          gateway: 10.20.20.254
+
 
 volumes:
   bastion-data:
@@ -473,5 +513,6 @@ volumes:
   wazuh-manager-queue:
   wazuh-manager-var:
   attacker-home:
+  attacker-ext-home:
   bastion-ssh-host:
   attacker-ssh-host:

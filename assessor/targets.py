@@ -13,7 +13,8 @@ from __future__ import annotations
 _TARGETS: dict[str, tuple[str, str]] = {
     # ─ 인프라 코어 ─
     "bastion":      ("6v6-bastion",      "10.20.30.201"),
-    "attacker":     ("6v6-attacker",     "10.20.30.202"),
+    "attacker":     ("6v6-attacker",     "10.20.30.202"),   # ext, insider
+    "attacker-ext": ("6v6-attacker-ext", "10.20.20.202"),   # wan, outsider(2026-06)
     "fw":           ("6v6-fw",           "10.20.30.1"),
     "ips":          ("6v6-ips",          "10.20.32.1"),
     "web":          ("6v6-web",          "10.20.32.80"),
@@ -44,6 +45,9 @@ _ALIASES: dict[str, str] = {
     "juice": "juiceshop",
     "admin": "adminconsole",
     "ai": "aicompanion",
+    "insider": "attacker",
+    "outsider": "attacker-ext",
+    "attacker_ext": "attacker-ext",
 }
 
 
