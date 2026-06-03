@@ -1,0 +1,16 @@
+<!--
+  6v6 명령 로깅 decoder — 채점/감사용 정적 수집(cohort-free).
+  각 컨테이너의 PROMPT_COMMAND 가 다음 형식을 송신:
+    (logger -t 6v6audit / 파일 라인 모두) "CMD6V6 host=H user=U pwd=P rc=R cmd=C"
+  body 안의 리터럴 마커 'CMD6V6' 로 prematch — syslog 전송(514)·Wazuh agent localfile
+  두 경로 모두 동일하게 매칭(program tag 위치 차이에 영향 없음).
+-->
+<decoder name="6v6-cmdlog">
+  <prematch>CMD6V6 </prematch>
+</decoder>
+
+<decoder name="6v6-cmdlog-fields">
+  <parent>6v6-cmdlog</parent>
+  <regex offset="after_prematch">host=(\S+) user=(\S+) pwd=(\S+) rc=(\d+) cmd=(.+)</regex>
+  <order>cmd_host,cmd_user,cmd_pwd,cmd_rc,command</order>
+</decoder>

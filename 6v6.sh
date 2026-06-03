@@ -351,8 +351,14 @@ cmd_up() {
         echo "[6v6] Ollama overlay enabled (aisec lecture; CPU inference slow. SKIP_OLLAMA=1 to disable)"
     fi
     COMPOSE_FILES="$COMPOSE_FILES $ENV_FILES"
-    docker compose $COMPOSE_FILES build
-    docker compose $COMPOSE_FILES up -d
+    # Assessor 평가 수집 레이어 — 기본 활성. SKIP_ASSESSOR=1 시 profile 미활성 → 생성 안 됨.
+    PROFILES=""
+    if [ "${SKIP_ASSESSOR:-0}" = "0" ]; then
+        PROFILES="--profile assessor"
+        echo "[6v6] Assessor 평가 수집 레이어 활성 (set SKIP_ASSESSOR=1 to disable)"
+    fi
+    docker compose $COMPOSE_FILES $PROFILES build
+    docker compose $COMPOSE_FILES $PROFILES up -d
     sleep 3   # let docker create networks + bridges before we tweak iptables
     cmd_setup_forward
     echo
@@ -591,7 +597,7 @@ cmd_status() {
     echo " 6v6 Lab Environment — VM IP: $IP"
     echo "================================================================"
     echo
-    docker compose ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+    docker compose --profile assessor ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
     # Windows 엔드포인트 (옵션) — base compose 와 분리돼 있어 별도로 보여줌
     if docker ps --format '{{.Names}}' | grep -q '^6v6-win$'; then
         docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' --filter name=^6v6-win$ | tail -n +2
@@ -609,13 +615,14 @@ cmd_status() {
     echo "  http://portal.6v6.lab/       Admin Portal"
     echo "  http://siem.6v6.lab/         SIEM (Wazuh lite UI)"
     echo "  http://bastion.6v6.lab/health  Bastion API"
+    echo "  http://assessor.6v6.lab/health Assessor (읽기 전용 평가 수집 API, X-API-Key)"
     echo
     echo "  Direct port access (debug, bypasses Apache):"
     echo "    http://$IP:8000/  http://$IP:5601/  http://$IP:9100/health"
     echo
     echo "  Add to student PC hosts file (/etc/hosts on linux/mac,"
     echo "  C:\\Windows\\System32\\drivers\\etc\\hosts on Windows):"
-    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab"
+    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab assessor.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab"
     echo
     echo "--- SSH (ProxyJump) --------------------------------------------"
     echo "  ssh -p 2204 ccc@$IP            # bastion (jump host)"
@@ -733,6 +740,34 @@ cmd_smoke() {
         echo "  [SKIP] sshpass not installed — manually verify 'ssh -p 2204 ccc@$IP'"
     fi
     echo
+    echo "--- Assessor (읽기 전용 평가 수집) ------------------------------"
+    if docker ps --format '{{.Names}}' | grep -q '^6v6-assessor$'; then
+        # /health (인증 불필요) — Host 헤더로 fw HAProxy 경유
+        local a_code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' \
+            -H "Host: assessor.6v6.lab" "http://$IP/health" 2>/dev/null || echo 000)
+        if [ "$a_code" = "200" ]; then
+            printf "  [OK]   assessor /health        HTTP %s\n" "$a_code"
+        else
+            printf "  [WARN] assessor /health        HTTP %s (still booting?)\n" "$a_code"
+        fi
+        # 샘플 check 1건: web 의 apache2.conf file_exists (X-API-Key, read-only)
+        local sample
+        sample=$(curl -s -m 8 -H "Host: assessor.6v6.lab" \
+            -H "X-API-Key: ${API_KEY:-ccc-api-key-2026}" \
+            -H "Content-Type: application/json" \
+            -X POST "http://$IP/assess" \
+            -d '{"checks":[{"id":"smoke1","type":"file_exists","target":"web","params":{"path":"/etc/apache2/apache2.conf"}}]}' 2>/dev/null)
+        if echo "$sample" | grep -q '"passed": *true'; then
+            printf "  [OK]   sample check file_exists(web) → passed (부작용 0)\n"
+        elif echo "$sample" | grep -q '"results"'; then
+            printf "  [WARN] sample check 응답하나 passed 아님: %s\n" "$(echo "$sample" | head -c 160)"
+        else
+            printf "  [WARN] sample check 무응답 (assessor 부팅중 또는 API key 불일치)\n"
+        fi
+    else
+        echo "  [SKIP] 6v6-assessor not running (SKIP_ASSESSOR=1?)"
+    fi
+    echo
 }
 
 cmd_help() {
@@ -767,9 +802,14 @@ Quick start (fresh Linux VM):
   bash 6v6.sh smoke                  # health check
 
 Services: bastion / attacker / fw / ips / web / siem / wazuh-indexer /
-          wazuh-dashboard / portal / juiceshop / dvwa / neobank / govportal /
-          mediforum / adminconsole / aicompanion
+          wazuh-dashboard / portal / assessor / juiceshop / dvwa / neobank /
+          govportal / mediforum / adminconsole / aicompanion
 Optional: 6v6-win (Windows 11 tiny11 user PC, user 10.20.33.60) -- --with-windows
+
+Toggles (env): SKIP_ASSESSOR=1 (평가 수집 레이어 생략) / SKIP_AGENTS / SKIP_SECUOPS_EASY
+          / SKIP_OPENCTI / SKIP_MISP / SKIP_SYSMON / SKIP_OLLAMA / SKIP_BOOT_PERSIST
+Assessor: 읽기 전용 평가 수집 API (CC/tubewar 채점용). http://assessor.6v6.lab/
+          POST /assess + X-API-Key. 자세한 내용 ASSESSOR.md.
 HELP
 }
 

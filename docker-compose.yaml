@@ -292,6 +292,38 @@ services:
     depends_on: [siem, web]
     restart: unless-stopped
 
+  # ╭─ Assessor: 읽기 전용 평가 수집 레이어 (CC/tubewar 채점용) ──╮
+  # Bastion 과 완전 별개의 서비스. CC 의 선언적 check-spec → VM 내부 read-only 검사
+  # → pass/fail + 근거. 클라이언트는 문맥 없이(dumb) 수집만 — cohort/과목/index 분리는
+  # 전적으로 서버(tubewar) 책임이라 여기엔 없음.
+  # SKIP_ASSESSOR=1 시 profile 미활성 → 생성 안 됨(base 컨테이너 무영향).
+  assessor:
+    container_name: 6v6-assessor
+    profiles: [assessor]
+    build:
+      context: .
+      dockerfile: assessor/Dockerfile
+    hostname: assessor
+    networks:
+      dmz:
+        ipv4_address: 10.20.32.55
+        aliases: [assessor]
+    environment:
+      API_KEY: ${API_KEY:-ccc-api-key-2026}
+      # 풍부 경로(옵션): USE_INDEXER=1 시 Wazuh indexer 질의 병행. 기본은 alerts.json.
+      USE_INDEXER: ${ASSESSOR_USE_INDEXER:-0}
+      INDEXER_URL: https://10.20.32.110:9200
+      INDEXER_USER: admin
+      INDEXER_PASS: SecretPassword
+    volumes:
+      # portal 과 동일 read-only access 패턴 — 호스트 상태(docker.sock) + 보안 로그
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - wazuh-manager-logs:/data/wazuh:ro
+      - ips-suricata-logs:/data/suricata-logs:ro
+      - web-apache-logs:/data/apache-logs:ro
+    depends_on: [siem, web, ips]
+    restart: unless-stopped
+
   # ╭─ int tier: vuln endpoints (behind WAF) ─────────────────╮
   juiceshop:
     container_name: 6v6-juiceshop

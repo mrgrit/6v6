@@ -33,6 +33,12 @@ COPY siem/haproxy-denat-decoder.xml /opt/haproxy-denat-decoder.xml
 COPY siem/haproxy-denat-rules.xml /opt/haproxy-denat-rules.xml
 COPY siem/95-haproxy-denat.sh /etc/cont-init.d/95-haproxy-denat
 RUN chmod +x /etc/cont-init.d/95-haproxy-denat
+
+# cont-init: 6v6 명령 로깅(cmdlog) decoder + rules — Assessor 의 command_ran 질의 지원
+COPY siem/cmdlog-decoder.xml /opt/cmdlog-decoder.xml
+COPY siem/cmdlog-rules.xml /opt/cmdlog-rules.xml
+COPY siem/94-cmdlog-rules.sh /etc/cont-init.d/94-cmdlog-rules
+RUN chmod +x /etc/cont-init.d/94-cmdlog-rules
 # cont-init: Wazuh API rate limit 5000/min (default 300 부족 → No API available)
 COPY siem/95-api-rate-limit.sh /etc/cont-init.d/95-api-rate-limit
 RUN chmod +x /etc/cont-init.d/96-bastion-audit-rules /etc/cont-init.d/95-api-rate-limit

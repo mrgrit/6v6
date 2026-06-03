@@ -82,6 +82,32 @@ if [ -d /var/ossec ]; then
   <localfile>\n    <log_format>json</log_format>\n    <location>/var/log/suricata/eve.json</location>\n  </localfile>\n  <localfile>\n    <log_format>syslog</log_format>\n    <location>/var/log/syslog</location>\n  </localfile>' /var/ossec/etc/ossec.conf
     fi
 
+    # 6v6-assessor: FIM(suricata 설정/룰 + 실습 디렉터리) + 명령 로깅 localfile (정적·cohort-free, 멱등)
+    if ! grep -q '6v6-assessor-collection' /var/ossec/etc/ossec.conf; then
+        __fimblk=$(mktemp)
+        cat > "$__fimblk" <<'FIMBLK'
+  <!-- 6v6-assessor-collection: FIM + cmdlog localfile (정적·cohort-free) -->
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>300</frequency>
+    <scan_on_start>yes</scan_on_start>
+    <alert_new_files>yes</alert_new_files>
+    <directories realtime="yes" report_changes="yes" whodata="yes">/etc/suricata</directories>
+    <directories realtime="yes" report_changes="yes">/home/ccc</directories>
+  </syscheck>
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/6v6-cmd.log</location>
+  </localfile>
+FIMBLK
+        __awktmp=$(mktemp)
+        awk 'NR==FNR{ins=ins $0 ORS; next} /<\/ossec_config>/ && !d{printf "%s",ins; d=1} {print}' \
+            "$__fimblk" /var/ossec/etc/ossec.conf > "$__awktmp" && \
+            cat "$__awktmp" > /var/ossec/etc/ossec.conf
+        rm -f "$__fimblk" "$__awktmp"
+        echo "[ips] ★ Assessor 수집(FIM + cmdlog localfile) 주입"
+    fi
+
     echo "[ips] waiting for Wazuh manager $WAZUH_MANAGER:1515..."
     for i in $(seq 1 30); do
         if (echo > /dev/tcp/$WAZUH_MANAGER/1515) 2>/dev/null; then
@@ -94,6 +120,26 @@ if [ -d /var/ossec ]; then
     /var/ossec/bin/agent-auth -m "$WAZUH_MANAGER" -A "$(hostname)" 2>&1 | tail -3 || true
     /var/ossec/bin/wazuh-control start 2>&1 | sed 's/^/  /' || true
 fi
+
+# ── 6v6 명령 로깅(채점/감사용, cohort-free 정적) ──────────────────────────
+: > /var/log/6v6-cmd.log 2>/dev/null || true
+chmod 0666 /var/log/6v6-cmd.log 2>/dev/null || true
+cat > /etc/profile.d/6v6-cmdlog.sh <<'CMDLOG'
+# 6v6: 대화형 셸 명령 로깅(채점/감사). CC/tubewar 가 Assessor command_ran 으로 질의.
+case "$-" in *i*) ;; *) return 2>/dev/null ;; esac
+__6v6_cmdlog() {
+  local rc=$? last
+  last=$(history 1 2>/dev/null | sed 's/^ *[0-9]* *//')
+  [ -z "$last" ] && return
+  local msg="CMD6V6 host=$(hostname) user=${USER:-?} pwd=$PWD rc=$rc cmd=$last"
+  logger -p local6.info -t 6v6audit "$msg" 2>/dev/null
+  printf '%s %s 6v6audit: %s\n' "$(date '+%b %e %H:%M:%S')" "$(hostname)" "$msg" >> /var/log/6v6-cmd.log 2>/dev/null
+}
+case ";${PROMPT_COMMAND};" in
+  *__6v6_cmdlog*) ;;
+  *) PROMPT_COMMAND="__6v6_cmdlog;${PROMPT_COMMAND}" ;;
+esac
+CMDLOG
 
 echo "[ips] starting sshd"
 exec /usr/sbin/sshd -D -e

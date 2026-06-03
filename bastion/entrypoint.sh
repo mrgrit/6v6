@@ -193,5 +193,27 @@ sed -i '/^HostKey \/var\/lib\/bastion/d' /etc/ssh/sshd_config
     done
 } >> /etc/ssh/sshd_config
 
+# ── 6v6 명령 로깅(채점/감사용, cohort-free 정적) ──────────────────────────
+# Bastion 의 두뇌(KG/Manager/SubAgent)·API(/health /exec /chat)·ProxyJump 와 무관한
+# 셸 profile.d 드롭인일 뿐 — 기존 역할 무변경. local6 는 기존 rsyslog(*.* @siem:514) 경유.
+: > /var/log/6v6-cmd.log 2>/dev/null || true
+chmod 0666 /var/log/6v6-cmd.log 2>/dev/null || true
+cat > /etc/profile.d/6v6-cmdlog.sh <<'CMDLOG'
+# 6v6: 대화형 셸 명령 로깅(채점/감사). CC/tubewar 가 Assessor command_ran 으로 질의.
+case "$-" in *i*) ;; *) return 2>/dev/null ;; esac
+__6v6_cmdlog() {
+  local rc=$? last
+  last=$(history 1 2>/dev/null | sed 's/^ *[0-9]* *//')
+  [ -z "$last" ] && return
+  local msg="CMD6V6 host=$(hostname) user=${USER:-?} pwd=$PWD rc=$rc cmd=$last"
+  logger -p local6.info -t 6v6audit "$msg" 2>/dev/null
+  printf '%s %s 6v6audit: %s\n' "$(date '+%b %e %H:%M:%S')" "$(hostname)" "$msg" >> /var/log/6v6-cmd.log 2>/dev/null
+}
+case ";${PROMPT_COMMAND};" in
+  *__6v6_cmdlog*) ;;
+  *) PROMPT_COMMAND="__6v6_cmdlog;${PROMPT_COMMAND}" ;;
+esac
+CMDLOG
+
 echo "[bastion] starting sshd"
 exec /usr/sbin/sshd -D -e

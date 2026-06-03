@@ -122,6 +122,7 @@ bash 6v6.sh status          # 외부 접속 안내 (VM_IP / 포트 / SSH 명령)
 | 6v6-wazuh-indexer | dmz 10.20.32.110 | OpenSearch (Wazuh 알림 색인) |
 | 6v6-wazuh-dashboard | dmz 10.20.32.120 | Wazuh Dashboard UI (5601) |
 | 6v6-portal | dmz 10.20.32.50 | 관리 대시보드 (FastAPI + HTMX) |
+| 6v6-assessor | dmz 10.20.32.55 | **읽기 전용 평가 수집** (CC/tubewar 채점용, profile `assessor`, `SKIP_ASSESSOR=1` 로 생략) |
 | 6v6-juiceshop | int 10.20.40.81 | OWASP Juice Shop (web vhost 만 도달) |
 | 6v6-dvwa | int 10.20.40.82 | DVWA |
 | 6v6-neobank | int 10.20.40.83 | NeoBank (Flask, 30 취약점) |
@@ -331,6 +332,28 @@ docker exec 6v6-siem grep -i sqli /var/ossec/logs/alerts/alerts.json | tail
 # 5) Windows (옵션) Sysmon → SIEM 도달 확인
 docker exec 6v6-siem grep -c "6v6-win" /var/ossec/logs/archives/archives.json
 ```
+
+## Assessor — 읽기 전용 평가 수집 레이어 (CC/tubewar 채점)
+
+중앙 플랫폼(CC)이 학생 VM에서 채점에 필요한 상황정보를 **읽기 전용 + API 키**로 당겨가는
+별도 서비스. Bastion·토폴로지·Wazuh 코어와 완전히 별개다. CC 는 raw 명령이 아니라 선언적
+*check-spec* 만 보내고, Assessor 가 **고정 명령 템플릿 + 화이트리스트**로만 안전 명령을 합성한다.
+
+```bash
+KEY=ccc-api-key-2026
+# WAF 차단 모드 + Suricata 동작 + SQLi 탐지 알림을 한 번에 질의 (부작용 0)
+curl -s -H "Host: assessor.6v6.lab" -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -X POST http://<VM_IP>/assess -d '{"checks":[
+    {"id":"waf","type":"file_contains","target":"web","params":{"path":"/etc/modsecurity/modsecurity.conf","pattern":"SecRuleEngine On"}},
+    {"id":"ips","type":"process_running","target":"ips","params":{"pattern":"suricata"}},
+    {"id":"det","type":"wazuh_alert","params":{"groups":["web_attack"],"since_sec":3600}}]}'
+```
+
+- 컨테이너 `6v6-assessor` (dmz 10.20.32.55), `http://assessor.6v6.lab/health`.
+- `bash 6v6.sh up` 이 기본 활성, `SKIP_ASSESSOR=1` 로 생략(base 컨테이너 무영향).
+- 채점용 정적 수집(cohort-free): FIM(syscheck) + 셸 명령 로깅을 모든 학생 동일하게 켠다 →
+  `fim_change` / `command_ran` 질의 가능. **클라이언트엔 과목/학년/index 로직이 없다.**
+- check type·예시·보안 노트 전체: **[ASSESSOR.md](ASSESSOR.md)**.
 
 ## 명령어
 
