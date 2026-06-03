@@ -91,7 +91,6 @@ if [ -d /var/ossec ]; then
     <disabled>no</disabled>
     <frequency>300</frequency>
     <scan_on_start>yes</scan_on_start>
-    <alert_new_files>yes</alert_new_files>
     <directories realtime="yes" report_changes="yes" whodata="yes">/etc/suricata</directories>
     <directories realtime="yes" report_changes="yes">/home/ccc</directories>
   </syscheck>

@@ -85,6 +85,8 @@ fi
 
 # ── 6v6 명령 로깅(채점/감사용, cohort-free 정적) ──────────────────────────
 # attacker 는 Wazuh agent 없음 → local6 가 기존 rsyslog(*.* @siem:514) 로 manager 전달.
+# 컨테이너에서 service rsyslog 가 데몬을 유지 못 하는 경우가 있어 미기동 시 직접 보장.
+pgrep -x rsyslogd >/dev/null 2>&1 || rsyslogd 2>/dev/null || true
 : > /var/log/6v6-cmd.log 2>/dev/null || true
 chmod 0666 /var/log/6v6-cmd.log 2>/dev/null || true
 cat > /etc/profile.d/6v6-cmdlog.sh <<'CMDLOG'

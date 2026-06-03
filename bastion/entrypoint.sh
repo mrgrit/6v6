@@ -196,6 +196,8 @@ sed -i '/^HostKey \/var\/lib\/bastion/d' /etc/ssh/sshd_config
 # ── 6v6 명령 로깅(채점/감사용, cohort-free 정적) ──────────────────────────
 # Bastion 의 두뇌(KG/Manager/SubAgent)·API(/health /exec /chat)·ProxyJump 와 무관한
 # 셸 profile.d 드롭인일 뿐 — 기존 역할 무변경. local6 는 기존 rsyslog(*.* @siem:514) 경유.
+# 컨테이너에서 rsyslog 데몬이 안 떠 있는 경우가 있어 미기동 시 직접 보장(전송 경로 확보).
+pgrep -x rsyslogd >/dev/null 2>&1 || rsyslogd 2>/dev/null || true
 : > /var/log/6v6-cmd.log 2>/dev/null || true
 chmod 0666 /var/log/6v6-cmd.log 2>/dev/null || true
 cat > /etc/profile.d/6v6-cmdlog.sh <<'CMDLOG'
