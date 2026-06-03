@@ -646,6 +646,10 @@ check_url() {
 }
 
 cmd_smoke() {
+    # smoke 는 best-effort 진단 — 각 항목이 자체 [OK]/[FAIL] 을 출력한다. 스크립트 전역
+    # 'set -euo pipefail' 하에서는 wazuh-control status 의 non-zero(클러스터/maild 등 미기동)
+    # + pipefail 이 set -e 로 smoke 를 중도 종료시키므로, 이 함수 안에서는 errexit/pipefail 해제.
+    set +e +o pipefail
     ensure_env
     local IP="$(vm_ip)"
     [ -z "$IP" ] && { echo "[6v6] cannot detect VM IP"; exit 1; }
