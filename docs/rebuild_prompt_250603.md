@@ -403,10 +403,13 @@ juiceshop(`bkimminich/juice-shop:latest`, int .81, admin@juice-sh.op 추측), dv
 
 ## 10. 접속 모델 / 자격증명
 
-### 10.1 학생 PC hosts 파일 1줄
+### 10.1 학생 PC hosts 파일 (각 줄 IP 로 시작 — wrap 주의)
 ```
-<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab
+<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab
+<VM_IP>  siem.6v6.lab bastion.6v6.lab assessor.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab
 ```
+> ⚠️ 한 줄로 길게 넣다가 줄바꿈되면 둘째 줄(siem 이후)에 IP 가 빠져 그 항목만 미해석 → "안 열림"
+> (juice~portal 만 열리고 siem/콘솔이 안 열리는 전형적 증상). 위처럼 각 줄을 IP 로 시작하면 안전.
 브라우저: `http://<service>.6v6.lab/` (web Apache vhost reverse proxy). 직접 포트(`:8000` portal, `:5601` siem, `:9100/health` bastion)는 ModSec 우회 — 학습 비교용.
 
 ### 10.2 SSH ProxyJump

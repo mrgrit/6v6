@@ -183,8 +183,14 @@ RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만 (`up --with-wi
 - 리눅스/맥: `/etc/hosts` (sudo)
 
 ```
-<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab
+<VM_IP>  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab
+<VM_IP>  siem.6v6.lab bastion.6v6.lab assessor.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab
 ```
+
+> ⚠️ **두 줄로 나눠 각 줄을 IP 로 시작**하세요. 한 줄로 길게 넣다가 에디터에서 줄바꿈되면
+> 둘째 줄(siem·콘솔)에 IP 가 빠져 그 항목만 "안 열림"이 됩니다 — `juice`~`portal` 은 되는데
+> `siem`/`*-gui` 만 안 열리면 99% 이 문제입니다. (이름은 파일에 다 있어 보여도 IP 가 안 붙은 것.)
+> 확인: 클라이언트에서 `ping siem.6v6.lab` → VM IP 가 나와야 정상.
 
 그 후 브라우저 — **모두 동일 패턴 `<service>.6v6.lab` 으로 접근** (web 의 Apache vhost 가 reverse proxy):
 

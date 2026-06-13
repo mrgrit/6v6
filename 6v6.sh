@@ -635,15 +635,20 @@ cmd_status() {
     echo
     echo "  Add to student PC hosts file (/etc/hosts on linux/mac,"
     echo "  C:\\Windows\\System32\\drivers\\etc\\hosts on Windows):"
-    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab assessor.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab"
+    echo "  $IP  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab"
+    echo "  $IP  siem.6v6.lab bastion.6v6.lab assessor.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab"
+    echo "  ★ 두 줄 각각이 IP 로 시작해야 함. 한 줄로 길게 넣다가 에디터에서 줄바꿈되면 둘째 줄"
+    echo "    (siem/콘솔)에 IP 가 빠져 그 항목만 '안 열림'. juice~portal 만 되고 siem 이후가"
+    echo "    안 열리면 99% 이 hosts 줄바꿈 문제 (각 줄을 IP 로 시작하게 나눠 넣으면 해결)."
     echo
     echo "--- SSH (ProxyJump) --------------------------------------------"
     echo "  ssh -p 2204 ccc@$IP            # bastion (jump host)"
     echo "  ssh -p 2202 ccc@$IP            # attacker (ext, insider — 내부 발판)"
     echo "  ssh -p 2203 ccc@$IP            # attacker-ext (wan, outsider — 공개 포트로만; SKIP_ATTACKER_EXT=1 로 비활성)"
-    echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.1     # secu"
-    echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.80    # web"
-    echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.100   # siem"
+    echo "  ssh -J ccc@$IP:2204 ccc@10.20.30.1     # fw  (ext, alias secu)"
+    echo "  ssh -J ccc@$IP:2204 ccc@10.20.31.2     # ips (pipe)"
+    echo "  ssh -J ccc@$IP:2204 ccc@10.20.32.80    # web (dmz)"
+    echo "  ssh -J ccc@$IP:2204 ccc@10.20.32.100   # siem (dmz)"
     echo "  password: ccc"
     echo
 }

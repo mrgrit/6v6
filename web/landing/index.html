@@ -45,8 +45,10 @@ th { background: #f1f5f9; }
 </div>
 
 <h2>취약 웹 7개 (학습용)</h2>
-<p class="muted">학생 PC <code>/etc/hosts</code> 에 다음 한 줄 추가:
-<code>&lt;VM_IP&gt; 6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab siem.6v6.lab bastion.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab</code></p>
+<p class="muted">학생 PC hosts 파일(<code>/etc/hosts</code> · 윈도우 <code>C:\Windows\System32\drivers\etc\hosts</code>)에 아래 <strong>두 줄</strong> 추가 — <strong>각 줄이 IP 로 시작</strong>해야 합니다:</p>
+<pre><code>&lt;VM_IP&gt;  6v6.lab juice.6v6.lab dvwa.6v6.lab neobank.6v6.lab govportal.6v6.lab mediforum.6v6.lab admin.6v6.lab ai.6v6.lab portal.6v6.lab
+&lt;VM_IP&gt;  siem.6v6.lab bastion.6v6.lab assessor.6v6.lab fw-gui.6v6.lab ips-gui.6v6.lab waf-gui.6v6.lab</code></pre>
+<p class="muted">⚠️ 한 줄로 길게 넣다가 에디터에서 줄바꿈되면 둘째 줄(siem·콘솔)에 IP 가 빠져 <strong>그 항목만 “안 열림”</strong>이 됩니다. <code>juice</code>~<code>portal</code> 은 되는데 <code>siem</code>/<code>*-gui</code> 만 안 열리면 거의 이 경우 — 위처럼 두 줄로 나눠 각각 IP 로 시작하세요. (확인: <code>ping siem.6v6.lab</code> → VM IP)</p>
 <div class="grid">
   <a class="card" href="http://juice.6v6.lab/"><span class="tag attack">취약</span>OWASP Juice Shop<span class="meta">juice.6v6.lab — 종합 OWASP Top 10</span></a>
   <a class="card" href="http://dvwa.6v6.lab/"><span class="tag attack">취약</span>DVWA<span class="meta">dvwa.6v6.lab — Damn Vulnerable Web App</span></a>
