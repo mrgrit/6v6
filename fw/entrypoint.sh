@@ -117,5 +117,13 @@ case ";${PROMPT_COMMAND};" in
 esac
 CMDLOG
 
+# ─── secuops-easy 교육용 GUI: 방화벽 콘솔 (이미지 내장 → 자동 기동) ──────────
+# 휘발성 docker-exec 주입 대신 entrypoint 에서 영구 기동. down/up·재부팅 후에도
+# fw-gui.6v6.lab 가 네트워크/exec 없이 즉시 열린다(HAProxy 라우트는 base config 내장).
+if [ -f /opt/nft_edu_gui/server.py ] && ! pgrep -f /opt/nft_edu_gui/server.py >/dev/null 2>&1; then
+    echo "[fw] starting nft_edu_gui (방화벽 콘솔) on :8080"
+    python3 /opt/nft_edu_gui/server.py 8080 >/var/log/nft_edu_gui.log 2>&1 &
+fi
+
 echo "[fw] starting sshd"
 exec /usr/sbin/sshd -D -e

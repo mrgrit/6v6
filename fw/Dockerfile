@@ -39,6 +39,9 @@ RUN mkdir -p /run/sshd && \
 
 COPY fw/nftables.conf /etc/nftables.conf
 COPY fw/haproxy.cfg /etc/haproxy/haproxy.cfg
+# secuops-easy 교육용 GUI (방화벽 콘솔) — 이미지에 내장(vendored, 네트워크 불필요).
+# entrypoint 가 :8080 으로 자동 기동 → down/up·재부팅 후 fw-gui.6v6.lab 즉시 접속 가능.
+COPY secuops-easy-deploy/gui/nft_edu_gui/ /opt/nft_edu_gui/
 COPY fw/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

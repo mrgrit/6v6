@@ -67,10 +67,17 @@ echo "[6v6-agents] (2/3) prepare bastion repo (Manager)"
 BASTION_DIR="${BASTION_DIR:-${HOME:-/root}/bastion}"
 if [ ! -d "$BASTION_DIR" ]; then
     echo "  clone bastion repo → $BASTION_DIR"
-    git clone https://github.com/mrgrit/bastion.git "$BASTION_DIR"
+    # timeout 으로 감싸 네트워크 불량 환경에서 'up' 이 무한 대기하지 않게 한다.
+    # 실패 시 Manager(:9200)만 건너뛰고 graceful exit (SubAgent 는 이미 가동됨).
+    if ! timeout 90 git clone --depth 1 https://github.com/mrgrit/bastion.git "$BASTION_DIR"; then
+        rm -rf "$BASTION_DIR"
+        echo "  ! bastion repo clone 실패/타임아웃 — Manager(:9200) skip. 네트워크 복구 후 'bash 6v6.sh agents' 재시도."
+        exit 0
+    fi
 else
     echo "  pull latest → $BASTION_DIR"
-    (cd "$BASTION_DIR" && git pull --ff-only 2>&1 | tail -2)
+    (cd "$BASTION_DIR" && timeout 30 git pull --ff-only 2>&1 | tail -2) || \
+        echo "  pull skip (오프라인/타임아웃 — 기존 코드로 계속)"
 fi
 
 cd "$BASTION_DIR"
@@ -85,7 +92,11 @@ if [ ! -x .venv/bin/pip ]; then
     fi
 fi
 echo "  install requirements (quiet)"
-.venv/bin/pip install -q -r requirements.txt
+# timeout 으로 감싸 pip 가 네트워크에서 멈춰 'up' 을 막지 않게 한다.
+if ! timeout 240 .venv/bin/pip install -q -r requirements.txt; then
+    echo "  ! pip install 실패/타임아웃 — Manager(:9200) skip (SubAgent 는 정상). 네트워크 복구 후 'bash 6v6.sh agents'."
+    exit 0
+fi
 
 # .env — 보존 (이미 있으면 미덮어쓰기)
 if [ ! -f .env ]; then

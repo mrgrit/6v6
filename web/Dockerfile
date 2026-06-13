@@ -69,6 +69,10 @@ RUN cd /etc/apache2/sites-available && \
 # Wazuh agent ossec.conf — Apache + ModSec localfile 추가
 COPY web/wazuh-agent.conf.append /tmp/wazuh-agent.conf.append
 
+# secuops-easy 교육용 GUI (WAF 콘솔) — 이미지에 내장(vendored, 네트워크 불필요).
+# entrypoint 가 :8080 으로 자동 기동 → down/up·재부팅 후 waf-gui.6v6.lab 즉시 접속 가능.
+COPY secuops-easy-deploy/gui/modsec_edu_gui/ /opt/modsec_edu_gui/
+
 COPY web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

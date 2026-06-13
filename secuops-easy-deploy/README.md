@@ -15,6 +15,12 @@
 각 GUI 는 **Python 표준 라이브러리만** 사용(pip 불필요), 단일 `server.py` + 정적 파일로
 컨테이너 안에서 root 로 동작한다.
 
+> **2026-06 구조 변경 (배포 신뢰성).** 세 GUI 소스는 이제 이 번들의 `gui/` 에 **vendoring**되어
+> fw/ips/web **이미지에 COPY**되고, 각 컨테이너 entrypoint 가 :8080 으로 **자동 기동**한다.
+> HAProxy vhost 라우트도 `fw/haproxy.cfg`(base)에 포함된다. 따라서 `down→up`·재부팅 후
+> **GitHub clone 도, 런타임 HAProxy 패치도 없이** 세 콘솔이 즉시 열린다. `deploy_all.sh` 는
+> 이제 그 상태를 검증/치유하는 **오프라인** 보조 도구일 뿐이다(아래 "사용법").
+
 ## 이 번들이 적용하는 인프라 보정
 
 배포 과정에서 다음 보정을 함께 적용한다(2026-05-27 6v6 실측 기준 필요했던 수정).
@@ -23,38 +29,42 @@
 |------|--------------|----|
 | `fix_modsec.py` | `/etc/modsecurity/modsecurity.conf` 의 중복·잘린 예외 블록(`SecRule REMOTE_ADDR @ipMatch` 등) 정규화 | 문법 오류로 Apache 가 기동 실패(AH00526)하던 것 복구 |
 | `suricata_local.rules.baseline` | `/etc/suricata/rules/local.rules` 를 올바른 문법으로 교체 | 기존 `!src_ip` 잘못된 옵션으로 전 룰 로딩 실패(rules_loaded 0)하던 것 복구 → 5/0 |
-| `patch_haproxy.py` | fw HAProxy 에 `fw-gui`/`ips-gui`/`waf-gui` vhost(both frontend) + backend 추가(idempotent) | 학생이 브라우저로 세 콘솔에 접속하도록 |
+| `patch_haproxy.py` | (구 이미지 backward-compat) `fw/haproxy.cfg` 에 GUI 라우트가 **없을 때만** 주입 | 현재는 base config 에 내장 → 보통 no-op |
 
-> HAProxy reload 주의: reload 후 **구 프로세스(이전 config)를 반드시 종료**해야 한다.
-> SO_REUSEPORT 로 두 프로세스가 80포트를 나눠 받으면, 일부 요청이 옛 config 로 가 404(Apache)
-> 가 난다. `deploy_all.sh` 의 [4/5] 단계가 이를 처리한다.
+> **과거 사고 기록.** 매 배포마다 `patch_haproxy.py` 로 HAProxy config 를 패치 후 reload 했는데,
+> 앵커 공백 불일치(`is_bastion ` 1칸 vs base 2칸)로 패치가 **영구 실패** → GUI 라우트가 안 들어가
+> 세 콘솔이 `default_backend`(웹 랜딩)로 **fallthrough**(거짓 200)하던 버그가 있었다. 또 reload 후
+> 구 프로세스 정리 레이스로 404 가 나기도 했다. 2026-06 부터 라우트를 base config 에 직접 두어
+> 이 패치/reload 경로 자체를 제거했다.
 
 ## 사용법
 
-6v6 호스트(docker 가 있는 머신)에서:
+보통은 **아무것도 할 필요 없다** — `bash 6v6.sh up` 이 이미지 빌드 시 GUI 를 내장하고,
+컨테이너 entrypoint 가 자동 기동한다. 콘솔이 안 열리는 것 같을 때만 아래 **오프라인 검증/치유**를
+돌린다(네트워크 불필요, 멱등):
 
 ```bash
-# GUI 레포를 자동 clone 하려면 GH_PAT 제공
-GH_PAT=<github_token> bash secuops-easy-deploy/deploy_all.sh
-
-# 또는 GUI 레포를 미리 /opt/secuops-easy-src/{nft,suricata,modsec}_edu_gui 에 두고:
 bash secuops-easy-deploy/deploy_all.sh
 ```
 
-개별 재배포(각 GUI 레포에서):
+GUI 소스(`gui/<repo>/`)를 수정했다면 이미지를 다시 빌드해야 반영된다:
 ```bash
-./deploy.sh 6v6-fw  8080   # nft_edu_gui
-./deploy.sh 6v6-ips 8080   # suricata_edu_gui
-./deploy.sh 6v6-web 8080   # modsec_edu_gui
+docker compose -f docker-compose.yaml --env-file .env build fw ips web && \
+docker compose -f docker-compose.yaml --env-file .env up -d fw ips web
 ```
+
+> vendored 소스를 upstream(`mrgrit/*_edu_gui`)에서 갱신하려면 각 레포의 `server.py` + `static/` 을
+> `gui/<repo>/` 에 덮어쓰고 위 빌드를 다시 한다.
 
 ## 검증(스모크)
 
 ```bash
+bash 6v6.sh smoke   # "교육용 콘솔" 섹션이 세 콘솔의 실제 title 을 확인 (랜딩 fallthrough 거짓 200 차단)
+
+# 수동 확인 — 200 만 보면 안 되고 title 에 '콘솔' 이 있어야 진짜 콘솔이다:
 for g in fw ips waf; do
-  docker exec 6v6-fw curl -s -o /dev/null -w "$g-gui %{http_code}\n" -H "Host: $g-gui.6v6.lab" http://127.0.0.1/
+  curl -s -H "Host: $g-gui.6v6.lab" http://<VM_IP>/ | grep -o '<title>[^<]*</title>'
 done
-# 기대: 모두 200
 docker exec 6v6-ips suricatasc -c ruleset-stats   # rules_loaded>=5, failed 0
 docker exec 6v6-web apache2ctl configtest          # Syntax OK
 ```

@@ -15,7 +15,11 @@ if "is_fw_gui" in conf:
     print("ALREADY-PATCHED: GUI vhost 가 이미 있음. 변경 없음.")
     raise SystemExit(0)
 
-ACL_ANCHOR = "    acl is_bastion hdr(host) -i bastion.6v6.lab\n"
+# NOTE: base haproxy.cfg 는 컬럼 정렬상 'is_bastion' 뒤에 공백 2칸이다. 과거 이 앵커가
+# 1칸이라 count==0 → "ANCHOR-NOT-FOUND" 로 패치가 영구 실패, GUI vhost 라우트가 안 들어가
+# fw-gui/ips-gui/waf-gui 가 랜딩으로 fallthrough 하던 버그가 있었다(2026-06 수정).
+# 현재는 라우트가 base config 에 내장되어 이 스크립트는 보통 ALREADY-PATCHED 로 no-op 한다.
+ACL_ANCHOR = "    acl is_bastion  hdr(host) -i bastion.6v6.lab\n"
 ACL_ADD = (
     "    acl is_fw_gui  hdr(host) -i fw-gui.6v6.lab\n"
     "    acl is_ips_gui hdr(host) -i ips-gui.6v6.lab\n"

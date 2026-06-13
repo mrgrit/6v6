@@ -626,6 +626,9 @@ cmd_status() {
     echo "  http://siem.6v6.lab/         SIEM (Wazuh lite UI)"
     echo "  http://bastion.6v6.lab/health  Bastion API"
     echo "  http://assessor.6v6.lab/health Assessor (읽기 전용 평가 수집 API, X-API-Key)"
+    echo "  http://fw-gui.6v6.lab/       방화벽 콘솔 (nftables 교육용 GUI)"
+    echo "  http://ips-gui.6v6.lab/      IPS 콘솔 (Suricata 교육용 GUI)"
+    echo "  http://waf-gui.6v6.lab/      WAF 콘솔 (ModSecurity 교육용 GUI)"
     echo
     echo "  Direct port access (debug, bypasses Apache):"
     echo "    http://$IP:8000/  http://$IP:5601/  http://$IP:9100/health"
@@ -679,6 +682,19 @@ cmd_smoke() {
             printf "  [OK]   %-22s HTTP %s\n" "$h.6v6.lab" "$code"
         else
             printf "  [FAIL] %-22s HTTP %s (backend may still be booting)\n" "$h.6v6.lab" "$code"
+        fi
+    done
+    echo
+    echo "--- 교육용 콘솔 (방화벽/IPS/WAF GUI — 실제 콘솔 페이지 title 확인) --------"
+    # 200 만으로는 부족: HAProxy 라우트 누락 시 default_backend(waf)→web 랜딩으로 fallthrough 하여
+    # 거짓 200 이 난다(과거 콘솔 미접속 버그의 원인). title 에 '콘솔' 이 있어야 진짜 콘솔이다.
+    for g in fw ips waf; do
+        local ctitle=$(curl -s -m 5 -H "Host: $g-gui.6v6.lab" "http://$IP/" 2>/dev/null \
+            | grep -ioE '<title>[^<]*</title>' | head -1)
+        if echo "$ctitle" | grep -q '콘솔'; then
+            printf "  [OK]   %-22s %s\n" "$g-gui.6v6.lab" "$ctitle"
+        else
+            printf "  [FAIL] %-22s '%s' (콘솔 아님 — 랜딩 fallthrough? 'bash 6v6.sh up' 로 재빌드)\n" "$g-gui.6v6.lab" "${ctitle:-no-response}"
         fi
     done
     echo
@@ -743,9 +759,12 @@ cmd_smoke() {
     fi
     echo
     echo "--- SSH bastion ------------------------------------------------"
-    local ssh_opt='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 -o BatchMode=yes'
+    # BatchMode=yes 는 password 인증을 비활성화해 sshpass 를 무력화한다(→ 항상 실패하던 거짓 [WARN]).
+    # 제거하고 PubkeyAuthentication=no 로 password 경로만 검증한다(bastion 은 password 로그인 허용).
+    local ssh_opt='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=4'
     if command -v sshpass >/dev/null 2>&1; then
-        if sshpass -p "${SSH_PASS:-ccc}" ssh -p 2204 $ssh_opt -o PreferredAuthentications=password \
+        if sshpass -p "${SSH_PASS:-ccc}" ssh -p 2204 $ssh_opt \
+              -o PreferredAuthentications=password -o PubkeyAuthentication=no \
               "${SSH_USER:-ccc}@$IP" 'true' 2>/dev/null; then
             echo "  [OK]   bastion SSH (port 2204)"
         else
