@@ -205,10 +205,11 @@ RAM 4G 추가 + 디스크 50G+ 필요. KVM 가능한 호스트만 (`up --with-wi
 | `http://ips-gui.6v6.lab/` | **IPS 콘솔** (Suricata 교육 GUI) | secuops-easy 특강 |
 | `http://waf-gui.6v6.lab/` | **WAF 콘솔** (ModSecurity 교육 GUI) | secuops-easy 특강 |
 
-> **secuops-easy GUI 3종**(fw-gui/ips-gui/waf-gui)은 `bash 6v6.sh up` 시 기본 자동 배포된다
-> (`SKIP_SECUOPS_EASY=1` 로 생략). 이 콘솔들은 컨테이너 내부 프로세스라 재부팅 시
-> `6v6-restore.service`(systemd)가 자동 재주입한다 — `bash 6v6.sh up` 이 이 서비스를 자동 활성화.
-> 수동 복구는 `bash 6v6.sh restore`.
+> **secuops-easy GUI 3종**(fw-gui/ips-gui/waf-gui)은 fw/ips/web **이미지에 내장**되어
+> 각 컨테이너 entrypoint 가 :8080 으로 **자동 기동**하고, HAProxy 라우트도 base 설정에 포함된다.
+> 따라서 `down→up`·재부팅 후 **GitHub clone 도, 런타임 패치도 없이** 즉시 열린다(네트워크 불필요).
+> 점검: `bash 6v6.sh smoke` 의 "교육용 콘솔" 항목(콘솔 페이지 title 확인). 혹시 누락 시
+> 오프라인 치유: `bash secuops-easy-deploy/deploy_all.sh`. (`SKIP_SECUOPS_EASY=1` 로 생략 가능.)
 
 > **직접 포트 접근도 살아있음** (관리/디버그용): `http://<VM_IP>:8000/` (portal),
 > `http://<VM_IP>:5601/` (siem), `http://<VM_IP>:9100/health` (bastion).

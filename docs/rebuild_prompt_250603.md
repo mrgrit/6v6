@@ -283,7 +283,7 @@ API_KEY=ccc-api-key-2026
 - 패키지: nftables, ipset, iptables, haproxy, tcpdump, conntrack, jq, osquery, wazuh-agent=4.10.1-1.
 - entrypoint: ip_forward, dmz/int route via `IPS_PIPE_IP`(10.20.31.2), self-signed cert(`CN=*.6v6.lab,O=6v6,C=KR`,730d) → `/etc/haproxy/certs/server.pem`, nftables 적용, haproxy 기동, wazuh-agent enroll, sshd.
 - **nftables.conf**: `inet six_filter`(INPUT: 22/icmp/established accept; FORWARD: established accept, 기본 accept; OUTPUT accept) + `ip six_nat`(PREROUTING/POSTROUTING placeholder, Docker NAT 보존).
-- **haproxy.cfg**: global maxconn 4096 + syslog → `10.20.32.100:514`(de-NAT client IP 복원). frontend `http_in`(:80) Host 헤더 라우팅: `siem.6v6.lab→dashboard(10.20.32.120:5601 ssl-verify none)`, `portal.6v6.lab→portal(10.20.32.50:8000)`, `bastion.6v6.lab→bastion(10.20.30.201:9100)`, 기본→`waf(10.20.32.80:80)`. frontend :443 TLS 종단 후 동일 라우팅(기본→waf_tls 10.20.32.80:443). frontend :9100 → bastion passthrough. (secuops-easy 가 fw-gui/ips-gui/waf-gui backend 추가.)
+- **haproxy.cfg**: global maxconn 4096 + syslog → `10.20.32.100:514`(de-NAT client IP 복원). frontend `http_in`(:80) Host 헤더 라우팅: `siem.6v6.lab→dashboard(10.20.32.120:5601 ssl-verify none)`, `portal.6v6.lab→portal(10.20.32.50:8000)`, `bastion.6v6.lab→bastion(10.20.30.201:9100)`, 기본→`waf(10.20.32.80:80)`. frontend :443 TLS 종단 후 동일 라우팅(기본→waf_tls 10.20.32.80:443). frontend :9100 → bastion passthrough. (+ `fw-gui/ips-gui/waf-gui` ACL+backend → 각 컨테이너 :8080, **base config 에 내장**. 과거엔 patch_haproxy.py 로 런타임 주입했으나 anchor 불일치로 실패하던 것을 base 로 이전.)
 
 ### 7.2 ips (Suricata IPS — pipe↔dmz↔user)
 - 패키지: suricata, suricata-update, nftables, tcpdump, jq, osquery, wazuh-agent=4.10.1-1.
@@ -358,7 +358,7 @@ agent 패러다임 = 자체 binary 디코딩, syslog 패러다임 = raw forward 
 
 ### 8.4 agent/ (Manager + SubAgent 레이어)
 - **subagent.py**: 각 컨테이너(attacker/fw/ips/web/siem)에 배포되는 HTTP 워커 :8002. `GET /health`(status/hostname/role), `POST /a2a/run_script`(`{script,timeout}`→subprocess→`{exit_code,stdout(30KB),stderr(5KB)}`). SIGHUP 무시(detach 내성).
-- **setup-agents.sh**: ①각 컨테이너에 subagent.py cp→`docker exec -d CCC_ROLE=<role> python3 /tmp/subagent.py`→/health 대기(멱등). ②Manager 준비: `github.com/mrgrit/bastion.git` clone→venv+pip→`.env` 생성(`LLM_BASE_URL`, `LLM_MANAGER_MODEL=gpt-oss:120b`, `LLM_SUBAGENT_MODEL=gemma3:4b`, VM IP 들, `BASTION_API_PORT=9200`, `BASTION_API_KEY=ccc-api-key-2026`). ③Manager 기동(nohup setsid :9200, /health 대기).
+- **setup-agents.sh**: ①각 컨테이너에 subagent.py cp→`docker exec -d CCC_ROLE=<role> python3 /tmp/subagent.py`→/health 대기(멱등). ②Manager 준비: `github.com/mrgrit/bastion.git` clone(timeout 90s)→venv+pip(timeout 240s; 네트워크 실패 시 Manager skip, SubAgent·콘솔은 유지)→`.env` 생성(`LLM_BASE_URL`, `LLM_MANAGER_MODEL=gpt-oss:120b`, `LLM_SUBAGENT_MODEL=gemma3:4b`, VM IP 들, `BASTION_API_PORT=9200`, `BASTION_API_KEY=ccc-api-key-2026`). ③Manager 기동(nohup setsid :9200, /health 대기).
 - **LLM 모델**: `LLM_BASE_URL`=Ollama 서버, `LLM_MANAGER_MODEL`=메인 지능(gpt-oss:120b 권장), `LLM_SUBAGENT_MODEL`=경량 스크립트 추출(gemma3:4b). 공격 코스는 `LLM_MANAGER_MODEL_UNSAFE`(derestricted) 사용 가능.
 
 ### 8.5 portal (FastAPI 관리 대시보드)
@@ -450,9 +450,11 @@ W11 sysmon-for-linux(systemd+eBPF). build `sysmon/Dockerfile`(jrei/systemd-ubunt
 
 ## 12. secuops-easy 특강 GUI (`secuops-easy-deploy/`)
 
-`bash 6v6.sh up` 기본 자동 배포(`SKIP_SECUOPS_EASY=1` 비활성). 방화벽/IPS/WAF 를 브라우저 GUI 로 학습.
-- **3 GUI**(Python stdlib only): `mrgrit/nft_edu_gui`→6v6-fw:8080(fw-gui.6v6.lab), `mrgrit/suricata_edu_gui`→6v6-ips:8080(ips-gui.6v6.lab), `mrgrit/modsec_edu_gui`→6v6-web:8080(waf-gui.6v6.lab).
-- **deploy_all.sh** [1/5]~[5/5]: ① `fix_modsec.py`(modsecurity.conf 중복/truncated SecRule 정리 → AH00526 방지, scanner subnet/service account allow 규칙) ② `suricata_local.rules.baseline`(sid 1000001-1000005 정상 룰로 교체, 기존 invalid syntax 로 rules_loaded=0 방지; 학생 룰은 sid≥9000000) ③ 3 repo clone + 각 deploy.sh ④ `patch_haproxy.py`(fw-gui/ips-gui/waf-gui ACL+backend 추가, anchor=`acl is_bastion`, HAProxy reload-stale proc kill) ⑤ smoke(HTTP 200 + suricata rules_loaded≥5).
+방화벽/IPS/WAF 를 브라우저 GUI 로 학습. **이미지 내장 → 컨테이너 기동 시 자동 실행**(별도 배포 단계·네트워크 불필요).
+- **3 GUI**(Python stdlib only): `secuops-easy-deploy/gui/{nft_edu_gui→fw, suricata_edu_gui→ips, modsec_edu_gui→web}` (upstream `mrgrit/*_edu_gui` 를 vendoring). 각 Dockerfile 이 `/opt/<gui>/` 로 COPY, entrypoint 가 `:8080` 자동 기동 → fw-gui/ips-gui/waf-gui.6v6.lab.
+- **HAProxy 라우트는 `fw/haproxy.cfg`(base)에 내장**: ACL `is_fw_gui/is_ips_gui/is_waf_gui` + backend(fw 127.0.0.1:8080 / ips 10.20.31.2:8080 / web 10.20.32.80:8080, check 미사용). 런타임 patch/reload 없음.
+- **deploy_all.sh** = 오프라인 검증/치유 보조(필수 아님): ① `fix_modsec.py`(멱등) ② `suricata_local.rules.baseline`(멱등) ③ GUI 가 :8080 미응답 시 vendored 소스로 재기동 ④ HAProxy 라우트 존재 확인(없을 때만 `patch_haproxy.py` backward-compat) ⑤ 콘솔 title 검증(랜딩 fallthrough 거짓 200 차단).
+- **(과거 사고)** `patch_haproxy.py` anchor 가 `acl is_bastion `(1칸)인데 base 는 정렬상 2칸 → 패치 영구 실패 → 콘솔이 `default_backend`(랜딩)로 fallthrough(거짓 200). 라우트를 base 에 내장 + GUI 이미지화하여 근본 해결(2026-06).
 - SIEM 연동: fw GUI→`/var/log/nft_edu/events.log`(wazuh agent tail).
 
 ---

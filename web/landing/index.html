@@ -86,7 +86,8 @@ th { background: #f1f5f9; }
 <h2>로그 통합 — Wazuh agent + syslog 두 패러다임</h2>
 <table>
 <tr><th>Source 컨테이너</th><th>방식</th><th>로그 종류</th><th>전송 경로</th></tr>
-<tr><td>secu</td><td>Wazuh agent</td><td>Suricata eve.json + syslog</td><td>secu:agent → siem:1514/tcp</td></tr>
+<tr><td>fw</td><td>Wazuh agent</td><td>nftables / haproxy / syslog</td><td>fw:agent → siem:1514/tcp</td></tr>
+<tr><td>ips</td><td>Wazuh agent</td><td>Suricata eve.json + syslog</td><td>ips:agent → siem:1514/tcp</td></tr>
 <tr><td>web</td><td>Wazuh agent</td><td>Apache access/error/modsec_audit.log</td><td>web:agent → siem:1514/tcp</td></tr>
 <tr><td>bastion</td><td>rsyslog forward</td><td>sshd auth.log + system</td><td>bastion → siem:514/udp</td></tr>
 <tr><td>attacker</td><td>rsyslog forward</td><td>shell history + system</td><td>attacker → siem:514/udp</td></tr>
@@ -106,35 +107,39 @@ Host 6v6-attacker
   Port 2202
   User ccc
 
-Host 6v6-secu 6v6-web 6v6-portal
+Host 6v6-fw 6v6-ips 6v6-web 6v6-siem 6v6-portal
   ProxyJump 6v6-bastion
   User ccc
 
-# 6v6-siem (Wazuh manager 공식 이미지) 는 sshd 없음.
-#   docker exec -it 6v6-siem bash       (VM 호스트에서)
-#   https://siem.6v6.lab/                (Wazuh dashboard)</code></pre>
+# 모두 비밀번호 ccc (ProxyJump 키는 6v6.sh up 이 자동 생성).
+# siem 웹 대시보드: https://siem.6v6.lab/  (admin / SecretPassword)</code></pre>
 
 <p class="muted">기본 SSH 비밀번호: <code>ccc</code> · Bastion API 키: <code>ccc-api-key-2026</code></p>
 
-<h2>네트워크 구성 (단일 bridge 10.20.30.0/24)</h2>
+<h2>네트워크 구성 (4-tier: ext → pipe → dmz → int, + user/wan)</h2>
+<p class="muted">외부 요청은 <code>fw</code>(80/443) 한 곳으로만 들어와 <strong>fw(방화벽) → ips(Suricata) → web(WAF) → int 백엔드</strong> 체인을 강제로 거친다. int 의 취약 사이트는 직접 노출되지 않는다.</p>
 <table>
-<tr><th>컨테이너</th><th>IP</th><th>역할</th><th>외부 포트</th></tr>
-<tr><td>6v6-bastion</td><td>10.20.30.201</td><td>SSH 점프 + Bastion API + rsyslog forward</td><td>2204, 9100</td></tr>
-<tr><td>6v6-secu</td><td>10.20.30.1</td><td>nftables + Suricata + Wazuh agent</td><td>—</td></tr>
-<tr><td>6v6-web</td><td>10.20.30.80</td><td>Apache + ModSec + 7 vhost + Wazuh agent</td><td>80, 443</td></tr>
-<tr><td>6v6-juiceshop</td><td>10.20.30.81</td><td>OWASP Juice Shop</td><td>—</td></tr>
-<tr><td>6v6-dvwa</td><td>10.20.30.82</td><td>DVWA</td><td>—</td></tr>
-<tr><td>6v6-neobank</td><td>10.20.30.83</td><td>NeoBank (Flask)</td><td>—</td></tr>
-<tr><td>6v6-govportal</td><td>10.20.30.84</td><td>GovPortal (Flask)</td><td>—</td></tr>
-<tr><td>6v6-mediforum</td><td>10.20.30.85</td><td>MediForum (Flask)</td><td>—</td></tr>
-<tr><td>6v6-adminconsole</td><td>10.20.30.86</td><td>AdminConsole (Flask)</td><td>—</td></tr>
-<tr><td>6v6-aicompanion</td><td>10.20.30.87</td><td>AICompanion (Flask + LLM)</td><td>—</td></tr>
-<tr><td>6v6-siem</td><td>10.20.30.100</td><td>Wazuh manager (official 4.10)</td><td>—</td></tr>
-<tr><td>6v6-wazuh-indexer</td><td>10.20.30.110</td><td>Wazuh indexer (OpenSearch)</td><td>—</td></tr>
-<tr><td>6v6-wazuh-dashboard</td><td>10.20.30.120</td><td>Wazuh dashboard (siem.6v6.lab)</td><td>—</td></tr>
-<tr><td>6v6-attacker</td><td>10.20.30.202</td><td>nmap, hydra, sqlmap, nikto</td><td>2202</td></tr>
-<tr><td>6v6-portal</td><td>10.20.30.50</td><td>관리 대시보드</td><td>8000</td></tr>
+<tr><th>컨테이너</th><th>Zone / IP</th><th>역할</th><th>외부 포트</th></tr>
+<tr><td>6v6-bastion</td><td>ext 10.20.30.201</td><td>SSH 점프 + Bastion API + rsyslog forward</td><td>2204</td></tr>
+<tr><td>6v6-attacker</td><td>ext 10.20.30.202</td><td>공격자(insider) nmap/hydra/sqlmap/nikto</td><td>2202</td></tr>
+<tr><td>6v6-attacker-ext</td><td>wan 10.20.20.202</td><td>공격자(outsider — 공개 포트로만, 옵션)</td><td>2203</td></tr>
+<tr><td><strong>6v6-fw</strong></td><td>ext .1 ↔ pipe .1</td><td><strong>방화벽</strong> nftables L3 forward + DNAT + HAProxy</td><td>80, 443, 9100</td></tr>
+<tr><td><strong>6v6-ips</strong></td><td>pipe .2 ↔ dmz .1 ↔ user .1</td><td><strong>IPS</strong> Suricata 인라인 sniff + Wazuh agent</td><td>—</td></tr>
+<tr><td>6v6-web</td><td>dmz .80 ↔ int .80</td><td>Apache + ModSecurity(WAF) + 7 vhost + Wazuh agent</td><td>—</td></tr>
+<tr><td>6v6-siem</td><td>dmz 10.20.32.100</td><td>Wazuh manager (official 4.10)</td><td>—</td></tr>
+<tr><td>6v6-wazuh-indexer</td><td>dmz 10.20.32.110</td><td>Wazuh indexer (OpenSearch)</td><td>—</td></tr>
+<tr><td>6v6-wazuh-dashboard</td><td>dmz 10.20.32.120</td><td>Wazuh dashboard (siem.6v6.lab)</td><td>—</td></tr>
+<tr><td>6v6-portal</td><td>dmz 10.20.32.50</td><td>관리 대시보드 (FastAPI + HTMX)</td><td>—</td></tr>
+<tr><td>6v6-assessor</td><td>dmz 10.20.32.55</td><td>읽기 전용 평가 수집 (채점용, 옵션)</td><td>—</td></tr>
+<tr><td>6v6-juiceshop</td><td>int 10.20.40.81</td><td>OWASP Juice Shop</td><td>—</td></tr>
+<tr><td>6v6-dvwa</td><td>int 10.20.40.82</td><td>DVWA</td><td>—</td></tr>
+<tr><td>6v6-neobank</td><td>int 10.20.40.83</td><td>NeoBank (Flask)</td><td>—</td></tr>
+<tr><td>6v6-govportal</td><td>int 10.20.40.84</td><td>GovPortal (Flask)</td><td>—</td></tr>
+<tr><td>6v6-mediforum</td><td>int 10.20.40.85</td><td>MediForum (Flask)</td><td>—</td></tr>
+<tr><td>6v6-adminconsole</td><td>int 10.20.40.86</td><td>AdminConsole (Flask)</td><td>—</td></tr>
+<tr><td>6v6-aicompanion</td><td>int 10.20.40.87</td><td>AICompanion (Flask + LLM)</td><td>—</td></tr>
 </table>
+<p class="muted">방화벽/IPS/WAF 교육 콘솔(fw-gui/ips-gui/waf-gui)은 각각 fw/ips/web 컨테이너의 :8080 에서 동작하며, fw 의 HAProxy 가 Host 헤더로 라우팅한다(이미지에 내장되어 컨테이너 기동 시 자동 실행).</p>
 
 <p class="muted" style="margin-top:3em;border-top:1px solid var(--border);padding-top:1em">
 6v6 — CCC 단일 VM Docker 버전 · <a href="https://github.com/mrgrit/6v6">github.com/mrgrit/6v6</a>
